@@ -65,7 +65,7 @@ def publisher():
     global LINEAR_VELOCITY, ANGULAR_VELOCITY, ENCODER_LEFT, ENCODER_RIGHT,RESET
 
     ODOM = Odometry()
-    base = 0.21 
+    base = 0.205
     wheel_radius = 0.0485 
     sita = 0
     x = 0
