@@ -41,14 +41,21 @@ class MCL_py():
         self.particle_list = []
         self.grid_map = OccupancyGrid()
 
+        self.received_odom = 0
+        self.received_scan = 0
+        self.received_map = 0
+
     def callback_odom(odom_msg):
         self.robot_odom = odom_msg
+        self.received_odom = 1
 
     def callback_scan(scan_msg):
         self.laser_scan = scan_msg
+        self.received_scan = 1
 
     def callback_grid_map(map_msg):
         self.grid_map = map_msg
+        self.received_map = 1
 
     def reset_particles(reset_flag):
         # Erase previous particle list      ### WARNING: do we really delete prev particles?
@@ -62,6 +69,7 @@ class MCL_py():
 class particle():
 
     def __init__(self, given_pose, given_laser_scan):
+        # given pose can be anything, even set manually
         self.particle_odom = given_pose
         # self.y = 0.0
         # self.theta = 0.0
@@ -84,9 +92,14 @@ def main():
     
     # Subscribe to grid map
     rospy.Subscriber('/grid_map', OccupancyGrid, mcl_obj.callback_grid_map)
+    
+    #rospy.spinOnce()
 
     # Reset particle_list with known prior
-    mcl_obj.reset_particles(0)     
+    if mcl_obj.received_odom == 1 and mcl_obj.received_scan == 1 and mcl_obj.received_map == 1:  
+        mcl_obj.reset_particles(0)
 
+    while not rospy.is_shutdown():     
+        
 if __name__ == '__main__':
     main()
