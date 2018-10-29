@@ -95,7 +95,6 @@ class GridMap
         {
             map_m[y][x] = value;
             map_v[x + y*n_width] = map_m[y][x];
-            //ROS_INFO("insert %d", map_m[x][y]);
         }
     } 
 
@@ -197,7 +196,7 @@ class GridMap
 
     void inflate_map()
     {
-        int radius = 4;
+        int radius = 5;
         int inflate_x = 0;
         int inflate_y = 0;
         int cell_state = 0;
@@ -286,7 +285,6 @@ int main(int argc, char **argv)
 
     // create some rays
     //map.add_ray(20,20,67,67);
-    
     //map.add_ray(100,40,30,40);
     //map.add_ray(2,2,10,50);
     // ras_grid_map end ------------------------------------------.
@@ -371,10 +369,12 @@ int main(int argc, char **argv)
         wall_id++;
         */
 
-       ras_map.inflate_map();
+       
     }
     //ROS_INFO_STREAM("Read "<<wall_id<<" walls from map file.");
 
+    // inflate the map
+    ras_map.inflate_map();
 
     // Main loop.
     while (n.ok())
