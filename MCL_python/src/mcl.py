@@ -85,13 +85,13 @@ def main():
     mcl_obj = MCL_py() 
     
     # Subscribe to Odometry 
-    rospy.Subscriber('/odom', Odometry, mcl_obj.callback_odom)
+    rospy.Subscriber('/robot_odom', Odometry, mcl_obj.callback_odom)
 
     # Subscribe to raw laser scan
     rospy.Subscriber('/scan', Odometry, mcl_obj.callback_scan)
     
     # Subscribe to grid map
-    rospy.Subscriber('/grid_map', OccupancyGrid, mcl_obj.callback_grid_map)
+    rospy.Subscriber('/maze_map_node/map', OccupancyGrid, mcl_obj.callback_grid_map)
     
     #rospy.spinOnce()
 
