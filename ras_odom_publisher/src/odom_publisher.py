@@ -100,8 +100,8 @@ def publisher():
         x = x + 0.5 * (v_left + v_right) * math.cos(sita)*dt
         y = y + 0.5 * (v_left + v_right) * math.sin(sita)*dt
         if RESET:
-            x = 0
-            y = 0
+            x = 0.0
+            y = 0.0
             sita = 0
             RESET = False
         else:
