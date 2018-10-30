@@ -33,6 +33,8 @@ from nav_msgs.msg import Odometry
 from nav_msgs.msg import OccupancyGrid
 from sensor_msgs.msg import LaserScan
 import tf
+import matplotlib.pyplot as plt
+from geometry_msgs.msg import  Pose, PoseArray
 
 # for odom calculation
 import std_msgs.msg
@@ -43,13 +45,14 @@ import math
 class MCL_py():
 
     def __init__(self):
+        '''MEMBER VARIABLES'''
         ### FOR ODOM CALCULATION
         # design variables 
         self.base = 0.205
         self.wheel_radius = 0.0485
         self.ticks_per_rev = 897.96
         self.control_frequency = 10
-        self.dt = 1/self.control_frequency
+        self.dt = 1.0/self.control_frequency
 
         # Intermediate variables
         self.encoder_right = 0
@@ -65,6 +68,7 @@ class MCL_py():
         self.rspeed = 0 
         self.robot_odom = Odometry()
         self.RESET = False
+        self.particle_cloud = PoseArray()
         
         ### FOR PF
         # design variables
@@ -77,9 +81,13 @@ class MCL_py():
         self.robot_scan = LaserScan()
         self.particle_list = []
         self.grid_map = OccupancyGrid()
+        
+        '''PUBLISHERS'''
         # Publisher for robot odometry
         self.pub_odom = rospy.Publisher('/robot_odom', Odometry, queue_size=1)
-
+        
+        # Publisher for particle cloud
+        self.pub_pc = rospy.Publisher('/particlecloud', PoseArray, queue_size=1)        
 
         # self.received_odom = 0
         # self.received_scan = 0
@@ -115,15 +123,15 @@ class MCL_py():
         self.temp_y = self.temp_y + 0.5 * (self.v_left + self.v_right) * math.sin(self.sita)*self.dt
 
         if self.RESET:
-            x = 0
-            y = 0
+            self.temp_x = 0
+            self.temp_y = 0
             self.sita = 0
             self.RESET = False
         else:
             pass
 
         self.robot_odom.pose.pose.position.x = self.temp_x
-        self.robot_odom.pose.pose.position.y = self.temp_x
+        self.robot_odom.pose.pose.position.y = self.temp_y
         
         quaternion = tf.transformations.quaternion_from_euler(0,0,self.sita)
         #ODOM.pose.pose.orientation.z = sita
@@ -143,9 +151,9 @@ class MCL_py():
         
     def prediction_step(self):
         for i in range(self.M):
-            dnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn
-            arnoise = (self.rspeed*self.dt*self.rdaStd)*np.random.randn
-            atnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn
+            dnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
+            arnoise = (self.rspeed*self.dt*self.rdaStd)*np.random.randn()
+            atnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
             
             self.particle_list[i].x = self.particle_list[i].x + (self.tspeed*self.dt+dnoise)*np.cos(self.particle_list[i].theta)
             self.particle_list[i].y = self.particle_list[i].y + (self.tspeed*self.dt+dnoise)*np.sin(self.particle_list[i].theta)
@@ -161,7 +169,7 @@ class MCL_py():
 
     # Callback for laser scan
     def callback_scan(self, scan_msg):
-        self.laser_scan = scan_msg
+        self.robot_scan = scan_msg
         #self.received_scan = 1
 
     # callback for occupancy grid
@@ -177,8 +185,16 @@ class MCL_py():
             for i in range(self.M):
                 self.particle_list.append(particle(self.robot_odom, self.robot_scan, self.M))
 
+    def pub_particle_cloud(self):
+        for i in range(self.M):
+            temp_pose = Pose()
+            temp_pose.position.x = self.particle_list[i].x
+            temp_pose.position.y = self.particle_list[i].y
+            temp_pose.orientation = tf.transformations.quaternion_from_euler(0, 0, self.particle_list[i].theta)
 
-
+            self.particle_cloud.poses.append(temp_pose)
+        
+        self.pub_pc.publish(self.particle_cloud)
 
 
 class particle():
@@ -205,16 +221,16 @@ def main():
     rate = rospy.Rate(mcl_obj.control_frequency)
 
     # Subscribe to Left Encoder 
-    rospy.Subscriber('/left_motor/encoder', phidgets.msg.motor_encoder, update_feedback_enc_left)
+    rospy.Subscriber('/left_motor/encoder', phidgets.msg.motor_encoder, mcl_obj.update_feedback_enc_left)
 
     # Subscribe to Right Encoder 
-    rospy.Subscriber('/right_motor/encoder', phidgets.msg.motor_encoder, update_feedback_enc_right)
+    rospy.Subscriber('/right_motor/encoder', phidgets.msg.motor_encoder, mcl_obj.update_feedback_enc_right)
 
     # Subscribe to Reset Flag 
-    rospy.Subscriber('/odom_reset', std_msgs.msg.Bool, reset_feedback)
+    rospy.Subscriber('/odom_reset', std_msgs.msg.Bool, mcl_obj.reset_feedback)
 
     # Subscribe to raw laser scan
-    rospy.Subscriber('/scan', Odometry, mcl_obj.callback_scan)
+    rospy.Subscriber('/scan', LaserScan, mcl_obj.callback_scan)
     
     # Subscribe to grid map
     rospy.Subscriber('/maze_map_node/map', OccupancyGrid, mcl_obj.callback_grid_map)
@@ -232,6 +248,8 @@ def main():
 
         # Prediction step
         mcl_obj.prediction_step()
+
+        mcl_obj.pub_particle_cloud()
 
         rate.sleep()
 
