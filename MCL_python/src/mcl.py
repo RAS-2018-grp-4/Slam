@@ -57,6 +57,8 @@ class MCL_py():
         self.v_left = 0             #left wheel velocity 
         self.v_right = 0            #right wheel vel
         self.sita = 0
+        self.temp_x = 0
+        self.temp_y = 0
 
         # Variables of interest
         self.tspeed = 0
@@ -109,20 +111,21 @@ class MCL_py():
         self.tspeed = 0.5 * (self.v_left + self.v_right)
         self.rspeed = (1/self.base) * (self.v_right - self.v_left)
 
-        x = x + 0.5 * (self.v_left + self.v_right) * math.cos(self.sita)*self.dt
-        y = y + 0.5 * (self.v_left + self.v_right) * math.sin(self.sita)*self.dt
+        self.temp_x = self.temp_x + 0.5 * (self.v_left + self.v_right) * math.cos(self.sita)*self.dt
+        self.temp_y = self.temp_y + 0.5 * (self.v_left + self.v_right) * math.sin(self.sita)*self.dt
+
         if self.RESET:
             x = 0
             y = 0
             self.sita = 0
-            RESET = False
+            self.RESET = False
         else:
             pass
 
-        self.robot_odom.pose.pose.position.x = x
-        self.robot_odom.pose.pose.position.y = y
+        self.robot_odom.pose.pose.position.x = self.temp_x
+        self.robot_odom.pose.pose.position.y = self.temp_x
         
-        quaternion = tf.transformations.quaternion_from_euler(0,0,sita)
+        quaternion = tf.transformations.quaternion_from_euler(0,0,self.sita)
         #ODOM.pose.pose.orientation.z = sita
         #ODOM.pose.pose.orientation.w = sita
         #print(quaternion[3])
@@ -144,8 +147,8 @@ class MCL_py():
             arnoise = (self.rspeed*self.dt*self.rdaStd)*np.random.randn
             atnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn
             
-            self.particle_list[i].x = self.particle_list[i].x + (self.tspeed*self.dt+dnoise)*cos(self.particle_list[i].theta)
-            self.particle_list[i].y = self.particle_list[i].y + (self.tspeed*self.dt+dnoise)*sin(self.particle_list[i].theta)
+            self.particle_list[i].x = self.particle_list[i].x + (self.tspeed*self.dt+dnoise)*np.cos(self.particle_list[i].theta)
+            self.particle_list[i].y = self.particle_list[i].y + (self.tspeed*self.dt+dnoise)*np.sin(self.particle_list[i].theta)
             self.particle_list[i].theta = self.particle_list[i].theta + (self.rspeed*self.dt+arnoise) + atnoise
             # X(2,n) = X(2,n) + (tspeed*dT+dnoise)*sin(X(3,n))
             # X(3,n) = X(3,n) + (rspeed*dT+arnoise) + atnoise
