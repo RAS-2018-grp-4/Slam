@@ -219,7 +219,7 @@ class MCL_py():
         self.pub_pc.publish(particle_cloud)
         #self.particle_cloud = []
 
-    def transform_scans(self):
+    def weight_update(self):
         #print('REACHED TF SCAN////////////////////')
         #scan_data = np.zeros((len(self.robot_scan.ranges),2))
         scan = self.robot_scan
@@ -252,40 +252,14 @@ class MCL_py():
                                             count_good = count_good + 1
 
                 self.particle_list[k].weight = count_good / len(scan.ranges)
+
+        for i in range(self.M):
+            self.particle_list[i]
         
         print('PARTICLE 1 weight is: ' + str(self.particle_list[0].weight))
 
-        #     #count = (int)(scan.scan_time / scan.time_increment)
-        #     #self.MSG.data = False
-        #     #wall_position_array = geometry_msgs.msg.PoseArray()
-        #     for i in range(0,len(scan.ranges)): 
-        #         print('REACHED HERE////////////////////')
-        #         x = scan.angle_min + scan.angle_increment * i
-        #         degree = ((x)*180./3.14)
-        #         # print(str(i) + ' ' + str(degree) + ' ' + str(scan.ranges[i]))
-        #         # if (i >= 160) and (i < 200):# -20 to 20
-        #         #     if scan.ranges[i] < self.DISTANCE_THRESHOLD:
-        #         #         self.MSG.data = True
-        #         #     else:
-        #         #         pass
-        #         # else:
-        #         #     pass
-                
-        #         if scan.ranges[i] != float("inf"):
+    def resampling():
 
-        #             #print(str(i) + ' ' + str(degree) + ' ' + str(scan.ranges[i]))
-        #             # self.WALL_POSITION.header.stamp = rospy.Time.now()
-        #             # self.WALL_POSITION.header.frame_id = 'particle'
-        #             # self.WALL_POSITION.point.x = self.particle_list[k].x + math.cos(self.particle_list[k].theta + x) * scan.ranges[i]
-        #             # self.WALL_POSITION.point.y = self.particle_list[k].y + math.sin(self.particle_list[k].theta + x) * scan.ranges[i]
-        #             # self.WALL_POSITION.point.z = 0
-        #             temp_x = self.particle_list[k].x + math.cos(self.particle_list[k].theta + x) * scan.ranges[i]
-        #             temp_y = self.particle_list[k].y + math.sin(self.particle_list[k].theta + x) * scan.ranges[i]
-                    
-        #             #self.LISTENER.waitForTransform("/particle", "/map", rospy.Time(0),rospy.Duration(4.0))
-        #             #self.WALL_POSITION = self.LISTENER.transformPoint("/map",self.WALL_POSITION)
-        #             # self.pub_pscan.publish(self.WALL_POSITION)
-        #             print(temp_x, temp_y)
 
 class particle():
 
@@ -341,11 +315,11 @@ def main():
         # Prediction step
         mcl_obj.prediction_step()
 
-        # Transform scans
-        mcl_obj.transform_scans()
-        # Measurement step
-
+        # Transform scans and update weights
+        mcl_obj.weight_update()
+        
         # Resampling step
+        mcl_obj.resampling()
 
         # Publish particle cloud
         mcl_obj.pub_particle_cloud()
