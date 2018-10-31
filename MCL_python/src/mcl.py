@@ -68,11 +68,11 @@ class MCL_py():
         self.rspeed = 0 
         self.robot_odom = Odometry()
         self.RESET = False
-        self.particle_cloud = PoseArray()
+        #self.particle_cloud = PoseArray()
         
         ### FOR PF
         # design variables
-        self.M = 100            # No. of particles
+        self.M = 5            # No. of particles
         self.tdStd = 0.1        # std dev. proportional to dist travelled in last iter 
         self.rdaStd = 0.1       # std dev. proportional to delta angle in last iter
         self.rdStd = 0.1        # ??
@@ -81,13 +81,19 @@ class MCL_py():
         self.robot_scan = LaserScan()
         self.particle_list = []
         self.grid_map = OccupancyGrid()
-        
+        self.reset_flag = 0
+        self.LISTENER = tf.TransformListener()
+        self.PARTICLE_SCAN  = geometry_msgs.msg.PointStamped()
+
         '''PUBLISHERS'''
         # Publisher for robot odometry
         self.pub_odom = rospy.Publisher('/robot_odom', Odometry, queue_size=1)
         
         # Publisher for particle cloud
         self.pub_pc = rospy.Publisher('/particlecloud', PoseArray, queue_size=1)        
+
+        # Publisher for particle scan transform
+        self.pub_pscan = rospy.Publisher('/particlescan', PoseArray, queue_size=1)    
 
         # self.received_odom = 0
         # self.received_scan = 0
@@ -123,10 +129,10 @@ class MCL_py():
         self.temp_y = self.temp_y + 0.5 * (self.v_left + self.v_right) * math.sin(self.sita)*self.dt
 
         if self.RESET:
+            # robot_odom is reset to initial position
             self.temp_x = 0
             self.temp_y = 0
             self.sita = 0
-            self.RESET = False
         else:
             pass
 
@@ -137,18 +143,30 @@ class MCL_py():
         #ODOM.pose.pose.orientation.z = sita
         #ODOM.pose.pose.orientation.w = sita
         #print(quaternion[3])
-        self.robot_odom.pose.pose.orientation.z = quaternion[2]
-        self.robot_odom.pose.pose.orientation.w = quaternion[3]
-	#ODOM.twist.twist.angular.z = sita
-        self.robot_odom.header.stamp = rospy.get_rostime()
-        self.robot_odom.header.frame_id = "odom"
-        self.robot_odom.child_frame_id = "base_link"
-        self.pub_odom.publish(self.robot_odom)
+        if not np.any(np.isnan(quaternion)):
+            self.robot_odom.pose.pose.orientation.z = quaternion[2]
+            self.robot_odom.pose.pose.orientation.w = quaternion[3]
+        #ODOM.twist.twist.angular.z = sita
+            self.robot_odom.header.stamp = rospy.get_rostime()
+            self.robot_odom.header.frame_id = "odom"
+            self.robot_odom.child_frame_id = "base_link"
+            self.pub_odom.publish(self.robot_odom)
 
-        # flush the encoders
-        self.encoder_right = 0
-        self.encoder_left = 0
-        
+            # now that new odom is published, check if particles need to be reset
+            if self.RESET:
+                # all particles are set to their initial positions
+                # if self.reset_flag is 0, all particles set to initial odom
+                # else if its 1, randomize particle poses again
+                self.reset_particles()
+
+                self.RESET = False
+            else:
+                pass
+
+            # flush the encoders
+            self.encoder_right = 0
+            self.encoder_left = 0
+            
     def prediction_step(self):
         for i in range(self.M):
             dnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
@@ -177,25 +195,97 @@ class MCL_py():
         self.grid_map = map_msg
         #self.received_map = 1
 
-    def reset_particles(self, reset_flag):
+    def reset_particles(self):
         # Erase previous particle list      ### WARNING: do we really delete prev particles?
         self.particle_list = []
+        #self.reset_flag = flag
 
-        if reset_flag == 0:     #prior known, set all particles acc to present odom
+        if self.reset_flag == 0:     #prior known, set all particles acc to present odom
             for i in range(self.M):
                 self.particle_list.append(particle(self.robot_odom, self.robot_scan, self.M))
 
     def pub_particle_cloud(self):
+        particle_cloud = PoseArray()
+        particle_cloud.header.stamp = rospy.get_rostime()
+        particle_cloud.header.frame_id = '/odom'
         for i in range(self.M):
             temp_pose = Pose()
             temp_pose.position.x = self.particle_list[i].x
             temp_pose.position.y = self.particle_list[i].y
-            temp_pose.orientation = tf.transformations.quaternion_from_euler(0, 0, self.particle_list[i].theta)
+            [temp_pose.orientation.x, temp_pose.orientation.y, temp_pose.orientation.z, temp_pose.orientation.w]  = tf.transformations.quaternion_from_euler(0, 0, self.particle_list[i].theta)
 
-            self.particle_cloud.poses.append(temp_pose)
+            particle_cloud.poses.append(temp_pose)
         
-        self.pub_pc.publish(self.particle_cloud)
+        self.pub_pc.publish(particle_cloud)
+        #self.particle_cloud = []
 
+    def transform_scans(self):
+        #print('REACHED TF SCAN////////////////////')
+        #scan_data = np.zeros((len(self.robot_scan.ranges),2))
+        scan = self.robot_scan
+        # scan = self.robot_scan
+        # print(len(scan.ranges))
+        
+        for k in range(self.M):
+            count_good = 0.0
+
+            if len(scan.ranges) is not 0:
+
+                for i in range(len(scan.ranges)):
+                    if scan.ranges[i] <= scan.range_min or scan.ranges[i] >= scan.range_max :
+                        continue
+                    else:
+                        current_bearing = scan.angle_min + i * scan.angle_increment
+                        x_map = self.particle_list[k].x + scan.ranges[i] * np.cos(current_bearing + self.particle_list[k].theta)
+                        y_map = self.particle_list[k].y + scan.ranges[i] * np.sin(current_bearing + self.particle_list[k].theta)
+                        
+                        temp_val = x_map/self.grid_map.info.resolution
+                        #print('TEMP VAL IS' + str(temp_val))
+                        if temp_val != float('Inf'):
+                            x_grid_map = int(x_map/self.grid_map.info.resolution)
+                            y_grid_map = int(y_map/self.grid_map.info.resolution)
+
+                            if x_grid_map >= 0 and x_grid_map <= self.grid_map.info.height :
+                                if y_grid_map >= 0 and y_grid_map <= self.grid_map.info.width : 
+                                    if x_grid_map+y_grid_map*self.grid_map.info.width <= self.grid_map.info.width * self.grid_map.info.height:
+                                        if self.grid_map.data[x_grid_map+y_grid_map*self.grid_map.info.width] == 100:
+                                            count_good = count_good + 1
+
+                self.particle_list[k].weight = count_good / len(scan.ranges)
+        
+        print('PARTICLE 1 weight is: ' + str(self.particle_list[0].weight))
+
+        #     #count = (int)(scan.scan_time / scan.time_increment)
+        #     #self.MSG.data = False
+        #     #wall_position_array = geometry_msgs.msg.PoseArray()
+        #     for i in range(0,len(scan.ranges)): 
+        #         print('REACHED HERE////////////////////')
+        #         x = scan.angle_min + scan.angle_increment * i
+        #         degree = ((x)*180./3.14)
+        #         # print(str(i) + ' ' + str(degree) + ' ' + str(scan.ranges[i]))
+        #         # if (i >= 160) and (i < 200):# -20 to 20
+        #         #     if scan.ranges[i] < self.DISTANCE_THRESHOLD:
+        #         #         self.MSG.data = True
+        #         #     else:
+        #         #         pass
+        #         # else:
+        #         #     pass
+                
+        #         if scan.ranges[i] != float("inf"):
+
+        #             #print(str(i) + ' ' + str(degree) + ' ' + str(scan.ranges[i]))
+        #             # self.WALL_POSITION.header.stamp = rospy.Time.now()
+        #             # self.WALL_POSITION.header.frame_id = 'particle'
+        #             # self.WALL_POSITION.point.x = self.particle_list[k].x + math.cos(self.particle_list[k].theta + x) * scan.ranges[i]
+        #             # self.WALL_POSITION.point.y = self.particle_list[k].y + math.sin(self.particle_list[k].theta + x) * scan.ranges[i]
+        #             # self.WALL_POSITION.point.z = 0
+        #             temp_x = self.particle_list[k].x + math.cos(self.particle_list[k].theta + x) * scan.ranges[i]
+        #             temp_y = self.particle_list[k].y + math.sin(self.particle_list[k].theta + x) * scan.ranges[i]
+                    
+        #             #self.LISTENER.waitForTransform("/particle", "/map", rospy.Time(0),rospy.Duration(4.0))
+        #             #self.WALL_POSITION = self.LISTENER.transformPoint("/map",self.WALL_POSITION)
+        #             # self.pub_pscan.publish(self.WALL_POSITION)
+        #             print(temp_x, temp_y)
 
 class particle():
 
@@ -205,8 +295,10 @@ class particle():
         self.x = given_pose.pose.pose.position.x
         self.y = given_pose.pose.pose.position.y
         (_,_,self.theta) = tf.transformations.euler_from_quaternion([given_pose.pose.pose.orientation.x, given_pose.pose.pose.orientation.y, given_pose.pose.pose.orientation.z, given_pose.pose.pose.orientation.w])
+        self.theta = self.theta
         self.weight = 1/M
-        self.particle_scan = given_laser_scan 
+        #self.particle_scan = given_laser_scan
+        #self.scan_map = np.zeros 
 
 
 
@@ -240,7 +332,7 @@ def main():
     # Reset particle_list with known prior
     # In this particular case, subscriber callbacks have not yet been called, so everything initializes to 0
     #if mcl_obj.received_odom == 1 and mcl_obj.received_scan == 1 and mcl_obj.received_map == 1:  
-    mcl_obj.reset_particles(0)
+    mcl_obj.reset_particles()
 
     while not rospy.is_shutdown():
         # Calculate robot odometry
@@ -249,6 +341,13 @@ def main():
         # Prediction step
         mcl_obj.prediction_step()
 
+        # Transform scans
+        mcl_obj.transform_scans()
+        # Measurement step
+
+        # Resampling step
+
+        # Publish particle cloud
         mcl_obj.pub_particle_cloud()
 
         rate.sleep()
