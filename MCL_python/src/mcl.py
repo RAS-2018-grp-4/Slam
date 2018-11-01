@@ -282,7 +282,7 @@ class MCL_py():
 
     
     
-    def resampling():
+    def resampling(self):
         temp_particles = self.particles
         cdf = np.cumsum(temp_particles)
 
