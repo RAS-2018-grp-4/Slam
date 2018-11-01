@@ -35,6 +35,7 @@ from sensor_msgs.msg import LaserScan
 import tf
 import matplotlib.pyplot as plt
 from geometry_msgs.msg import  Pose, PoseArray
+from sklearn.preprocessing import normalize
 
 # for odom calculation
 import std_msgs.msg
@@ -80,6 +81,7 @@ class MCL_py():
         # variables of interest
         self.robot_scan = LaserScan()
         self.particle_list = []
+        self.particles = np.zeros((M,4))
         self.grid_map = OccupancyGrid()
         self.reset_flag = 0
         self.LISTENER = tf.TransformListener()
@@ -168,17 +170,17 @@ class MCL_py():
             self.encoder_left = 0
             
     def prediction_step(self):
-        for i in range(self.M):
-            dnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
-            arnoise = (self.rspeed*self.dt*self.rdaStd)*np.random.randn()
-            atnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
+        # for i in range(self.M):
+        #     dnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
+        #     arnoise = (self.rspeed*self.dt*self.rdaStd)*np.random.randn()
+        #     atnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
             
-            self.particle_list[i].x = self.particle_list[i].x + (self.tspeed*self.dt+dnoise)*np.cos(self.particle_list[i].theta)
-            self.particle_list[i].y = self.particle_list[i].y + (self.tspeed*self.dt+dnoise)*np.sin(self.particle_list[i].theta)
-            self.particle_list[i].theta = self.particle_list[i].theta + (self.rspeed*self.dt+arnoise) + atnoise
-            # X(2,n) = X(2,n) + (tspeed*dT+dnoise)*sin(X(3,n))
-            # X(3,n) = X(3,n) + (rspeed*dT+arnoise) + atnoise
-
+        #     self.particle_list[i].x = self.particle_list[i].x + (self.tspeed*self.dt+dnoise)*np.cos(self.particle_list[i].theta)
+        #     self.particle_list[i].y = self.particle_list[i].y + (self.tspeed*self.dt+dnoise)*np.sin(self.particle_list[i].theta)
+        #     self.particle_list[i].theta = self.particle_list[i].theta + (self.rspeed*self.dt+arnoise) + atnoise
+        self.particles[:,0] = self.particles[:,0] + (self.tspeed*self.dt+dnoise)*np.cos(self.particles[:,2])
+        self.particles[:,1] = self.particles[:,1] + (self.tspeed*self.dt+dnoise)*np.sin(self.particles[:,2])
+        self.particles[:,2] = self.particles[:,2] + (self.rspeed*self.dt+arnoise) + atnoise
 
 
     # def callback_odom(odom_msg):
@@ -196,13 +198,23 @@ class MCL_py():
         #self.received_map = 1
 
     def reset_particles(self):
-        # Erase previous particle list      ### WARNING: do we really delete prev particles?
-        self.particle_list = []
-        #self.reset_flag = flag
+        # # Erase previous particle list      ### WARNING: do we really delete prev particles?
+        # self.particle_list = []
+        # #self.reset_flag = flag
 
-        if self.reset_flag == 0:     #prior known, set all particles acc to present odom
-            for i in range(self.M):
-                self.particle_list.append(particle(self.robot_odom, self.robot_scan, self.M))
+        # if self.reset_flag == 0:     #prior known, set all particles acc to present odom
+        #     for i in range(self.M):
+        #         self.particle_list.append(particle(self.robot_odom, self.robot_scan, self.M))
+
+        self.particles = np.zeros((self.M,4))
+        self.particles[:,3] = 1.0/self.M
+
+        if self.reset_flag == 0:         #prior known, set all particles acc to present odom
+            self.particles[:,0] = self.robot_odom.pose.pose.position.x
+            self.particles[:,1] = self.robot_odom.pose.pose.position.y
+            (_,_,theta) = tf.transformations.euler_from_quaternion([self.robot_odom.pose.pose.orientation.x, self.robot_odom.pose.pose.orientation.y, self.robot_odom.pose.pose.orientation.z, self.robot_odom.pose.pose.orientation.w])
+            self.particles[:,2] = theta    
+
 
     def pub_particle_cloud(self):
         particle_cloud = PoseArray()
@@ -210,9 +222,13 @@ class MCL_py():
         particle_cloud.header.frame_id = '/odom'
         for i in range(self.M):
             temp_pose = Pose()
-            temp_pose.position.x = self.particle_list[i].x
-            temp_pose.position.y = self.particle_list[i].y
-            [temp_pose.orientation.x, temp_pose.orientation.y, temp_pose.orientation.z, temp_pose.orientation.w]  = tf.transformations.quaternion_from_euler(0, 0, self.particle_list[i].theta)
+            # temp_pose.position.x = self.particle_list[i].x
+            # temp_pose.position.y = self.particle_list[i].y
+            # [temp_pose.orientation.x, temp_pose.orientation.y, temp_pose.orientation.z, temp_pose.orientation.w]  = tf.transformations.quaternion_from_euler(0, 0, self.particle_list[i].theta)
+
+            temp_pose.position.x = self.particles[i,0]
+            temp_pose.position.y = self.particles[i,1]
+            [temp_pose.orientation.x, temp_pose.orientation.y, temp_pose.orientation.z, temp_pose.orientation.w]  = tf.transformations.quaternion_from_euler(0, 0, self.particles[i,2])
 
             particle_cloud.poses.append(temp_pose)
         
@@ -236,8 +252,11 @@ class MCL_py():
                         continue
                     else:
                         current_bearing = scan.angle_min + i * scan.angle_increment
-                        x_map = self.particle_list[k].x + scan.ranges[i] * np.cos(current_bearing + self.particle_list[k].theta)
-                        y_map = self.particle_list[k].y + scan.ranges[i] * np.sin(current_bearing + self.particle_list[k].theta)
+                        # x_map = self.particle_list[k].x + scan.ranges[i] * np.cos(current_bearing + self.particle_list[k].theta)
+                        # y_map = self.particle_list[k].y + scan.ranges[i] * np.sin(current_bearing + self.particle_list[k].theta)
+                        
+                        x_map = self.particles[k,0] + scan.ranges[i] * np.cos(current_bearing + self.particles[k,2])
+                        y_map = self.particles[k,1] + scan.ranges[i] * np.sin(current_bearing + self.particles[k,2])
                         
                         temp_val = x_map/self.grid_map.info.resolution
                         #print('TEMP VAL IS' + str(temp_val))
@@ -251,14 +270,38 @@ class MCL_py():
                                         if self.grid_map.data[x_grid_map+y_grid_map*self.grid_map.info.width] == 100:
                                             count_good = count_good + 1
 
-                self.particle_list[k].weight = count_good / len(scan.ranges)
+                #self.particle_list[k].weight = count_good / len(scan.ranges)
+                self.particles[k,3] = count_good / len(scan.ranges)
 
-        for i in range(self.M):
-            self.particle_list[i]
-        
-        print('PARTICLE 1 weight is: ' + str(self.particle_list[0].weight))
+        # for i in range(self.M):
+        #     self.particle_list[i]
+        self.particles[:,3] = normalize(self.particles[:,3])
 
+        #print('PARTICLE 1 weight is: ' + str(self.particle_list[0].weight))
+        print('PARTICLE 1 weight is: ' + str(self.particles[0,3]))
+
+    
+    
     def resampling():
+        temp_particles = self.particles
+        cdf = np.cumsum(temp_particles)
+
+        self.particles = np.zeros((M,4))
+
+        if cdf[-1] != 1:
+            print("[ERROR]: CDF doesn't sum up to 1 !!!")
+        else:
+            for i in range(self.M):
+                temp_rand = np.random.rand()
+                temp_ind = np.where(temp_particles[:,3] > temp_rand) 
+                ind = temp_ind[0]
+                self.particles[i,:] = temp_particles[ind,:]
+                self.particles[i,3] = 1.0/self.M
+
+                
+
+        
+
 
 
 class particle():
@@ -322,8 +365,8 @@ def main():
         mcl_obj.resampling()
 
         # Publish particle cloud
-        mcl_obj.pub_particle_cloud()
-
+        mcl_obj.pub_particle_cloud()        
+        
         rate.sleep()
 
         
