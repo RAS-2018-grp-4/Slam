@@ -367,10 +367,10 @@ def main():
         mcl_obj.prediction_step()
 
         # Transform scans and update weights
-        #mcl_obj.weight_update()
+        mcl_obj.weight_update()
         
         # Resampling step
-        #mcl_obj.resampling()
+        mcl_obj.resampling()
 
         # Publish particle cloud
         mcl_obj.pub_particle_cloud()        
