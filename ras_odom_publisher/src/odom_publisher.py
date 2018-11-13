@@ -67,7 +67,7 @@ def publisher():
     ODOM = Odometry()
     base = 0.205
     wheel_radius = 0.0485 
-    sita = 0
+    sita = 1.57
     x = 0
     y = 0
     
@@ -102,7 +102,7 @@ def publisher():
         if RESET:
             x = 0.0
             y = 0.0
-            sita = 0
+            sita = 1.57
             RESET = False
         else:
             pass       

@@ -43,8 +43,27 @@ import phidgets.msg
 import geometry_msgs.msg
 import math
 
-class MCL_py():
+class State():
+    def __init__(self):
+        self.x = 0
+        self.y = 0
+        self.theta = math.pi/2
+    def __str__(self):
+        return "Pose:({0},{1},{2})".format(self.x, self.y, self.theta)
 
+class particle():
+    def __init__(self, given_pose, given_laser_scan, M):
+        # given pose can be anything, even set manually
+        self.particle_odom = given_pose
+        self.x = given_pose.pose.pose.position.x
+        self.y = given_pose.pose.pose.position.y
+        (_,_,self.theta) = tf.transformations.euler_from_quaternion([given_pose.pose.pose.orientation.x, given_pose.pose.pose.orientation.y, given_pose.pose.pose.orientation.z, given_pose.pose.pose.orientation.w])
+        self.theta = self.theta
+        self.weight = 1/M
+        #self.particle_scan = given_laser_scan
+        #self.scan_map = np.zeros 
+
+class MCL_py():
     def __init__(self):
         '''MEMBER VARIABLES'''
         ### FOR ODOM CALCULATION
@@ -60,7 +79,7 @@ class MCL_py():
         self.encoder_left = 0
         self.v_left = 0             #left wheel velocity 
         self.v_right = 0            #right wheel vel
-        self.sita = 0
+        self.sita = math.pi/2
         self.temp_x = 0
         self.temp_y = 0
 
@@ -73,23 +92,37 @@ class MCL_py():
         
         ### FOR PF
         # design variables
-        self.M = 5            # No. of particles
-        self.tdStd = 0.1        # std dev. proportional to dist travelled in last iter 
-        self.rdaStd = 0.1       # std dev. proportional to delta angle in last iter
+        self.M = 5000            # No. of particles
+        self.tdStd = 0.4        # std dev. proportional to dist travelled in last iter 
+        self.rdaStd = 0.2       # std dev. proportional to delta angle in last iter
         self.rdStd = 0.1        # ??
         
         # variables of interest
         self.robot_scan = LaserScan()
         self.particle_list = []
         self.particles = np.zeros((self.M,4))
+        self.particles[:,2] = math.pi/2
+        self.particles[:,3] = 1.0/self.M
+        print(self.particles)
         self.grid_map = OccupancyGrid()
-        self.reset_flag = 0
+        # 0: redistribute particles according to odom
+        # 1: redistribute particles randomly over the map
+        self.reset_flag = 0       
         self.LISTENER = tf.TransformListener()
         self.PARTICLE_SCAN  = geometry_msgs.msg.PointStamped()
+
+        # parameters for resampling
+        self.has_moved = False      # will only re-sample if has_moved
+        self.step_scan_match = 10   # step size betwen scan matching (50 is for "global" localization)
+
+        # consensus pose
+        self.state_filter = State()
+        self.state_filter_odom = Odometry()
 
         '''PUBLISHERS'''
         # Publisher for robot odometry
         self.pub_odom = rospy.Publisher('/robot_odom', Odometry, queue_size=1)
+        self.pub_filter = rospy.Publisher('/robot_filter', Odometry, queue_size=1)
         
         # Publisher for particle cloud
         self.pub_pc = rospy.Publisher('/particlecloud', PoseArray, queue_size=1)        
@@ -119,10 +152,28 @@ class MCL_py():
         else:
             pass
 
+    # def callback_odom(odom_msg):
+    #     self.robot_odom = odom_msg
+    #     #self.received_odom = 1
+
+    # Callback for laser scan
+    def callback_scan(self, scan_msg):
+        self.robot_scan = scan_msg
+        #self.received_scan = 1
+
+    # callback for occupancy grid
+    def callback_grid_map(self, map_msg):
+        self.grid_map = map_msg
+        #self.received_map = 1
+
     def calc_and_pub_odom(self):
         self.v_left = self.wheel_radius * (self.encoder_left * 2 * np.pi * self.control_frequency) / (self.ticks_per_rev)
         self.v_right = self.wheel_radius*(self.encoder_right * 2 * np.pi * self.control_frequency) / (self.ticks_per_rev)
         self.sita = self.sita + (1/self.base) * self.dt * (self.v_right - self.v_left)
+
+        # update has_moved flag
+        if abs(self.v_left) > 0.001 or abs(self.v_right) > 0.001:
+            self.has_moved = True
 
         self.tspeed = 0.5 * (self.v_left + self.v_right)
         self.rspeed = (1/self.base) * (self.v_right - self.v_left)
@@ -134,7 +185,7 @@ class MCL_py():
             # robot_odom is reset to initial position
             self.temp_x = 0
             self.temp_y = 0
-            self.sita = 0
+            self.sita = math.pi/2
         else:
             pass
 
@@ -185,24 +236,10 @@ class MCL_py():
             dnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
             arnoise = (self.rspeed*self.dt*self.rdaStd)*np.random.randn()
             atnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()      
-            self.particles[i,0] = self.particles[i,0] + (self.tspeed*self.dt+dnoise)*np.cos(self.particles[i,2])
-            self.particles[i,1] = self.particles[i,1] + (self.tspeed*self.dt+dnoise)*np.sin(self.particles[i,2])
-            self.particles[i,2] = self.particles[i,2] + (self.rspeed*self.dt+arnoise) + atnoise
+            self.particles[i,0] = self.particles[i,0] + (self.tspeed*self.dt+dnoise)*np.cos(self.particles[i,2])# + 0.005*np.random.randn()
+            self.particles[i,1] = self.particles[i,1] + (self.tspeed*self.dt+dnoise)*np.sin(self.particles[i,2])# + 0.005*np.random.randn()
+            self.particles[i,2] = self.particles[i,2] + (self.rspeed*self.dt+arnoise)# + atnoise + 0.05*np.random.randn()
 
-
-    # def callback_odom(odom_msg):
-    #     self.robot_odom = odom_msg
-    #     #self.received_odom = 1
-
-    # Callback for laser scan
-    def callback_scan(self, scan_msg):
-        self.robot_scan = scan_msg
-        #self.received_scan = 1
-
-    # callback for occupancy grid
-    def callback_grid_map(self, map_msg):
-        self.grid_map = map_msg
-        #self.received_map = 1
 
     def reset_particles(self):
         # # Erase previous particle list      ### WARNING: do we really delete prev particles?
@@ -217,87 +254,90 @@ class MCL_py():
         self.particles[:,3] = 1.0/self.M
 
         if self.reset_flag == 0:         #prior known, set all particles acc to present odom
-            self.particles[:,0] = self.robot_odom.pose.pose.position.x
-            self.particles[:,1] = self.robot_odom.pose.pose.position.y
-            (_,_,theta) = tf.transformations.euler_from_quaternion([self.robot_odom.pose.pose.orientation.x, self.robot_odom.pose.pose.orientation.y, self.robot_odom.pose.pose.orientation.z, self.robot_odom.pose.pose.orientation.w])
-            self.particles[:,2] = theta    
+            for i in range(self.M):
+                self.particles[i,0] = self.robot_odom.pose.pose.position.x + np.random.uniform(-0.3, 0.3)
+                self.particles[i,1] = self.robot_odom.pose.pose.position.y + np.random.uniform(-0.3, 0.3)
+                (_,_,theta) = tf.transformations.euler_from_quaternion([self.robot_odom.pose.pose.orientation.x, self.robot_odom.pose.pose.orientation.y, self.robot_odom.pose.pose.orientation.z, self.robot_odom.pose.pose.orientation.w])
+                self.particles[i,2] = theta + np.random.uniform(-np.pi/4, np.pi/4)
 
+        elif self.reset_flag == 1: 
+            for i in range(self.M):
+                rand_x = np.random.randint(0, self.grid_map.info.width)
+                rand_y = np.random.randint(0, self.grid_map.info.height)
+                rand_theta = np.random.uniform(0, 2 * np.pi)
 
-    def pub_particle_cloud(self):
-        particle_cloud = PoseArray()
-        particle_cloud.header.stamp = rospy.get_rostime()
-        particle_cloud.header.frame_id = "odom"
-        for i in range(self.M):
-            temp_pose = Pose()
-            # temp_pose.position.x = self.particle_list[i].x
-            # temp_pose.position.y = self.particle_list[i].y
-            # [temp_pose.orientation.x, temp_pose.orientation.y, temp_pose.orientation.z, temp_pose.orientation.w]  = tf.transformations.quaternion_from_euler(0, 0, self.particle_list[i].theta)
+                if self.grid_map.data[rand_x + rand_y * self.grid_map.info.width] == 0:
+                    self.particles[i,0] = rand_x * self.grid_map.info.resolution - 0.2
+                    self.particles[i,1] = rand_y * self.grid_map.info.resolution - 0.2
+                    self.particles[i,2] = rand_theta
 
-            temp_pose.position.x = self.particles[i,0]
-            temp_pose.position.y = self.particles[i,1]
-            [temp_pose.orientation.x, temp_pose.orientation.y, temp_pose.orientation.z, temp_pose.orientation.w]  = tf.transformations.quaternion_from_euler(0, 0, self.particles[i,2])
-
-            particle_cloud.poses.append(temp_pose)
-        
-        self.pub_pc.publish(particle_cloud)
-        #self.particle_cloud = []
 
     def weight_update(self):
-        #print('REACHED TF SCAN////////////////////')
         #scan_data = np.zeros((len(self.robot_scan.ranges),2))
         scan = self.robot_scan
         # scan = self.robot_scan
-        # print(len(scan.ranges))
-        
+   
+        # global --> local localization
+        if self.M == 5000:
+            if np.std(self.particles[range(0,self.M),0] - np.mean(self.particles[range(0,self.M),0])) < 0.5 and np.std(self.particles[range(0,self.M),1] - np.mean(self.particles[range(0,self.M),1])) < 0.5:
+                self.M = 500
+                self.step_scan_match = 20
+
         for k in range(self.M):
             count_good = 0.0
 
-            if len(scan.ranges) is not 0:
-
-                for i in range(len(scan.ranges)):
-                    if scan.ranges[i] <= scan.range_min or scan.ranges[i] >= scan.range_max :
+            if len(scan.ranges) > 0:
+                for i in range(0, len(scan.ranges), self.step_scan_match):
+                    if scan.ranges[i] <= scan.range_min or scan.ranges[i] >= scan.range_max or scan.ranges[i] == float("inf"):
                         continue
                     else:
                         current_bearing = scan.angle_min + i * scan.angle_increment
                         # x_map = self.particle_list[k].x + scan.ranges[i] * np.cos(current_bearing + self.particle_list[k].theta)
                         # y_map = self.particle_list[k].y + scan.ranges[i] * np.sin(current_bearing + self.particle_list[k].theta)
                         
-                        x_map = self.particles[k,0] + scan.ranges[i] * np.cos(current_bearing + self.particles[k,2])
-                        y_map = self.particles[k,1] + scan.ranges[i] * np.sin(current_bearing + self.particles[k,2])
+                        # TODO: FIX THE 0.2 (ODOM --> TO MAP FRAME) -------------------------------------------------------------------------------------------
+                        x_map = 0.2 + self.particles[k,0] + scan.ranges[i] * np.cos(current_bearing + self.particles[k,2])
+                        y_map = 0.2 + self.particles[k,1] + scan.ranges[i] * np.sin(current_bearing + self.particles[k,2])
                         
                         temp_val = x_map/self.grid_map.info.resolution
                         #print('TEMP VAL IS' + str(temp_val))
-                        if temp_val != float('Inf'):
+                        if temp_val != float('inf'):
                             x_grid_map = int(x_map/self.grid_map.info.resolution)
                             y_grid_map = int(y_map/self.grid_map.info.resolution)
 
                             if x_grid_map >= 0 and x_grid_map <= self.grid_map.info.height :
                                 if y_grid_map >= 0 and y_grid_map <= self.grid_map.info.width : 
-                                    if x_grid_map+y_grid_map*self.grid_map.info.width <= self.grid_map.info.width * self.grid_map.info.height:
+                                    if x_grid_map+y_grid_map*self.grid_map.info.width < self.grid_map.info.width * self.grid_map.info.height:
                                         if self.grid_map.data[x_grid_map+y_grid_map*self.grid_map.info.width] == 100:
                                             count_good = count_good + 1
 
                 #self.particle_list[k].weight = count_good / len(scan.ranges)
                 self.particles[k,3] = count_good / len(scan.ranges)
 
-        # for i in range(self.M):
-        #     self.particle_list[i]
-        #self.particles[:,3] = normalize(self.particles[:,3].reshape(1,-1))
-        self.particles[:,3] = self.particles[:,3]/(np.sum(self.particles[:,3]))
+        self.particles[range(0,self.M),3] = self.particles[range(0,self.M),3]/(np.sum(self.particles[range(0,self.M),3]))
 
-        #print('PARTICLE 1 weight is: ' + str(self.particle_list[0].weight))
-        print('PARTICLE 1 weight is: ' + str(self.particles[0,3]))
-
+        #print('PARTICLE 1 weight is: ' + str(self.particles[0,3]))
+        #print("sum", np.sum(self.particles[range(0,self.M),3]))
+        #print(self.particles[range(0,self.M),3])
     
     
     def resampling(self):
-        temp_particles = self.particles
+        # TODO: check why np.sum(self.particles[range(0,self.M),3]) sometimes is NaN 
+        if np.isnan(self.particles).any():
+            print("NaN detected, skip resampling for this step")
+            return
+
+        temp_particles = self.particles[range(0,self.M),:]
+
         cdf = np.cumsum(temp_particles[:,3])
+        if cdf[-1] < 1.0:
+            print("cdf too small:", cdf[-1])
+            cdf = cdf + (1.0001-cdf[-1])/self.M
+            print("cdf corrected:", cdf[-1])
 
-        #self.particles = np.zeros((self.M,4))
-
-        if cdf[-1] != 1:
-            print("[ERROR]: CDF doesn't sum up to 1 !!!")
+        if cdf[-1] < 1:
+            print("CDF NOT 1!:", cdf[-1])
+            pass    
         else:
             for i in range(self.M):
                 temp_rand = np.random.rand()
@@ -305,28 +345,42 @@ class MCL_py():
                 ind = temp_ind[0][0]
                 self.particles[i,:] = temp_particles[ind,:]
                 self.particles[i,3] = 1.0/self.M
+            print("RESAMPLE DONE")
 
                 
+    def pub_particle_cloud(self):
+        particle_cloud = PoseArray()
+        particle_cloud.header.stamp = rospy.get_rostime()
+        particle_cloud.header.frame_id = "odom"
 
+        for i in range(self.M):
+            temp_pose = Pose()
+            temp_pose.position.x = self.particles[i,0]
+            temp_pose.position.y = self.particles[i,1]
+            [temp_pose.orientation.x, temp_pose.orientation.y, temp_pose.orientation.z, temp_pose.orientation.w]  = tf.transformations.quaternion_from_euler(0, 0, self.particles[i,2])
+            particle_cloud.poses.append(temp_pose)
         
+        self.pub_pc.publish(particle_cloud)
+        #self.particle_cloud = []
 
+        # publish particle consensus ##########################################################
+        self.state_filter.x = np.mean(self.particles[range(0,self.M),0])
+        self.state_filter.y = np.mean(self.particles[range(0,self.M),1])
+        self.state_filter.theta = np.mean(self.particles[range(0,self.M),2])
+        #print(self.state_filter)
 
+        self.state_filter_odom.pose.pose.position.x = self.state_filter.x
+        self.state_filter_odom.pose.pose.position.y = self.state_filter.y
 
-class particle():
-
-    def __init__(self, given_pose, given_laser_scan, M):
-        # given pose can be anything, even set manually
-        self.particle_odom = given_pose
-        self.x = given_pose.pose.pose.position.x
-        self.y = given_pose.pose.pose.position.y
-        (_,_,self.theta) = tf.transformations.euler_from_quaternion([given_pose.pose.pose.orientation.x, given_pose.pose.pose.orientation.y, given_pose.pose.pose.orientation.z, given_pose.pose.pose.orientation.w])
-        self.theta = self.theta
-        self.weight = 1/M
-        #self.particle_scan = given_laser_scan
-        #self.scan_map = np.zeros 
-
-
-
+        quaternion = tf.transformations.quaternion_from_euler(0,0,self.state_filter.theta)
+        if not np.any(np.isnan(quaternion)):
+            self.state_filter_odom.pose.pose.orientation.z = quaternion[2]
+            self.state_filter_odom.pose.pose.orientation.w = quaternion[3]
+            self.state_filter_odom.header.stamp = rospy.get_rostime()
+            self.state_filter_odom.header.frame_id = "odom"
+            self.state_filter_odom.child_frame_id = "base_link"
+            self.pub_filter.publish(self.state_filter_odom)
+        
 
 ''' MAIN '''
 def main():
@@ -357,24 +411,33 @@ def main():
     # Reset particle_list with known prior
     # In this particular case, subscriber callbacks have not yet been called, so everything initializes to 0
     #if mcl_obj.received_odom == 1 and mcl_obj.received_scan == 1 and mcl_obj.received_map == 1:  
-    mcl_obj.reset_particles()
-
+    
+    #mcl_obj.reset_particles()
+    e = 0
     while not rospy.is_shutdown():
+        e = e + 1
+        
         # Calculate robot odometry
         mcl_obj.calc_and_pub_odom()
 
         # Prediction step
         mcl_obj.prediction_step()
-
-        # Transform scans and update weights
-        mcl_obj.weight_update()
         
-        # Resampling step
-        mcl_obj.resampling()
+        # resample 10/2 times a second
+        if e % 3 == 0:
+            # ONLY update and resample if the robot is moving
+            if mcl_obj.has_moved:
+                mcl_obj.has_moved = False
 
-        # Publish particle cloud
-        mcl_obj.pub_particle_cloud()        
-        
+                # Transform scans and update weights
+                mcl_obj.weight_update()
+                
+                # Resampling step
+                mcl_obj.resampling()     
+
+            # Publish particle cloud
+            mcl_obj.pub_particle_cloud()        
+            e = 0
         rate.sleep()
 
         
