@@ -45,8 +45,8 @@ import math
 
 class State():
     def __init__(self):
-        self.x = 0
-        self.y = 0
+        self.x = 0.2
+        self.y = 0.2
         self.theta = math.pi/2
     def __str__(self):
         return "Pose:({0},{1},{2})".format(self.x, self.y, self.theta)
@@ -80,8 +80,8 @@ class MCL_py():
         self.v_left = 0             #left wheel velocity 
         self.v_right = 0            #right wheel vel
         self.sita = math.pi/2
-        self.temp_x = 0
-        self.temp_y = 0
+        self.temp_x = 0.2
+        self.temp_y = 0.2
 
         # Variables of interest
         self.tspeed = 0
@@ -182,10 +182,10 @@ class MCL_py():
         self.temp_y = self.temp_y + 0.5 * (self.v_left + self.v_right) * math.sin(self.sita)*self.dt
 
         if self.RESET:
-            # robot_odom is reset to initial position
-            self.temp_x = 0
-            self.temp_y = 0
-            self.sita = math.pi/2
+            # robot_odom is reset to initial position ------------------------------------------------------------------------------------
+            self.temp_x = -0.2
+            self.temp_y = -0.2
+            self.sita = math.pi/2 - 0.4
         else:
             pass
 
@@ -236,9 +236,9 @@ class MCL_py():
             dnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()
             arnoise = (self.rspeed*self.dt*self.rdaStd)*np.random.randn()
             atnoise = (self.tspeed*self.dt*self.tdStd)*np.random.randn()      
-            self.particles[i,0] = self.particles[i,0] + (self.tspeed*self.dt+dnoise)*np.cos(self.particles[i,2])# + 0.005*np.random.randn()
-            self.particles[i,1] = self.particles[i,1] + (self.tspeed*self.dt+dnoise)*np.sin(self.particles[i,2])# + 0.005*np.random.randn()
-            self.particles[i,2] = self.particles[i,2] + (self.rspeed*self.dt+arnoise)# + atnoise + 0.05*np.random.randn()
+            self.particles[i,0] = self.particles[i,0] + (self.tspeed*self.dt+dnoise)*np.cos(self.particles[i,2]) + 0.05*np.random.randn()*self.dt
+            self.particles[i,1] = self.particles[i,1] + (self.tspeed*self.dt+dnoise)*np.sin(self.particles[i,2]) + 0.05*np.random.randn()*self.dt
+            self.particles[i,2] = self.particles[i,2] + (self.rspeed*self.dt+arnoise) + atnoise + 0.05*np.random.randn()*self.dt
 
 
     def reset_particles(self):
@@ -260,6 +260,7 @@ class MCL_py():
                 (_,_,theta) = tf.transformations.euler_from_quaternion([self.robot_odom.pose.pose.orientation.x, self.robot_odom.pose.pose.orientation.y, self.robot_odom.pose.pose.orientation.z, self.robot_odom.pose.pose.orientation.w])
                 self.particles[i,2] = theta + np.random.uniform(-np.pi/4, np.pi/4)
 
+        '''
         elif self.reset_flag == 1: 
             for i in range(self.M):
                 rand_x = np.random.randint(0, self.grid_map.info.width)
@@ -270,7 +271,7 @@ class MCL_py():
                     self.particles[i,0] = rand_x * self.grid_map.info.resolution - 0.2
                     self.particles[i,1] = rand_y * self.grid_map.info.resolution - 0.2
                     self.particles[i,2] = rand_theta
-
+        '''
 
     def weight_update(self):
         #scan_data = np.zeros((len(self.robot_scan.ranges),2))
@@ -281,7 +282,7 @@ class MCL_py():
         if self.M == 5000:
             if np.std(self.particles[range(0,self.M),0] - np.mean(self.particles[range(0,self.M),0])) < 0.5 and np.std(self.particles[range(0,self.M),1] - np.mean(self.particles[range(0,self.M),1])) < 0.5:
                 self.M = 500
-                self.step_scan_match = 20
+                self.step_scan_match = 25
 
         for k in range(self.M):
             count_good = 0.0
@@ -296,14 +297,14 @@ class MCL_py():
                         # y_map = self.particle_list[k].y + scan.ranges[i] * np.sin(current_bearing + self.particle_list[k].theta)
                         
                         # TODO: FIX THE 0.2 (ODOM --> TO MAP FRAME) -------------------------------------------------------------------------------------------
-                        x_map = 0.2 + self.particles[k,0] + scan.ranges[i] * np.cos(current_bearing + self.particles[k,2])
-                        y_map = 0.2 + self.particles[k,1] + scan.ranges[i] * np.sin(current_bearing + self.particles[k,2])
+                        x_map = self.particles[k,0] + scan.ranges[i] * np.cos(current_bearing + self.particles[k,2])
+                        y_map = self.particles[k,1] + scan.ranges[i] * np.sin(current_bearing + self.particles[k,2])
                         
                         temp_val = x_map/self.grid_map.info.resolution
                         #print('TEMP VAL IS' + str(temp_val))
                         if temp_val != float('inf'):
-                            x_grid_map = int(x_map/self.grid_map.info.resolution)
-                            y_grid_map = int(y_map/self.grid_map.info.resolution)
+                            x_grid_map = int((x_map - self.grid_map.info.origin.position.x)/self.grid_map.info.resolution)
+                            y_grid_map = int((y_map - self.grid_map.info.origin.position.y)/self.grid_map.info.resolution)
 
                             if x_grid_map >= 0 and x_grid_map <= self.grid_map.info.height :
                                 if y_grid_map >= 0 and y_grid_map <= self.grid_map.info.width : 
@@ -331,9 +332,9 @@ class MCL_py():
 
         cdf = np.cumsum(temp_particles[:,3])
         if cdf[-1] < 1.0:
-            print("cdf too small:", cdf[-1])
+            #print("cdf too small:", cdf[-1])
             cdf = cdf + (1.0001-cdf[-1])/self.M
-            print("cdf corrected:", cdf[-1])
+            #print("cdf corrected:", cdf[-1])
 
         if cdf[-1] < 1:
             print("CDF NOT 1!:", cdf[-1])
@@ -424,9 +425,9 @@ def main():
         mcl_obj.prediction_step()
         
         # resample 10/2 times a second
-        if e % 3 == 0:
-            # ONLY update and resample if the robot is moving
-            if mcl_obj.has_moved:
+        if e % 1 == 0:
+            # ONLY update and resample if the robot is moving (NOW ALWAYS RESMAPLE 33333333333233333333333333333333)
+            if mcl_obj.has_moved or not mcl_obj.has_moved:
                 mcl_obj.has_moved = False
 
                 # Transform scans and update weights
