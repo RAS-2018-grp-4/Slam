@@ -1,3 +1,38 @@
+/*
+ *  world_node.cpp
+ *
+ *
+ *  Created on: Sept 18, 2014
+ *  Authors:   Rares Ambrus
+ *            raambrus <at> kth.se
+ */
+
+/* Copyright (c) 2015, Rares Ambrus, CVAP, KTH
+   All rights reserved.
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are met:
+      * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+      * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in the
+        documentation and/or other materials provided with the distribution.
+      * Neither the name of KTH nor the
+        names of its contributors may be used to endorse or promote products
+        derived from this software without specific prior written permission.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+   ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+   DISCLAIMED. IN NO EVENT SHALL KTH BE LIABLE FOR ANY
+   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
 
 // ROS includes.
 #include <ros/ros.h>
@@ -6,7 +41,7 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/Point.h>
 #include <tf/tf.h>
-
+#include <tf/transform_listener.h>
 // Boost includes
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +54,7 @@
 // from ras_grid_map
 #include "std_msgs/String.h"
 #include "nav_msgs/OccupancyGrid.h"
+#include "nav_msgs/Odometry.h"
 #include "nav_msgs/MapMetaData.h"
 #include "geometry_msgs/Pose.h"
 #include "geometry_msgs/PointStamped.h"
@@ -31,50 +67,35 @@
 using namespace std;
 
 typedef std::tuple<int, int> tuple2;
-float x;
-float y;
+
+// specify map dimensions
+const int map_height = 3;                                 // [m]
+const int map_width = 3;                                  // [m]
+const float map_resolution = 0.03;                        // [m]
+const int n_height = (float)map_height/map_resolution;    // [1]
+const int n_width = (float)map_width/map_resolution;      // [1]
+
+double x,y;
 
 class GridMap 
 { 
     public: 
-
     visualization_msgs::MarkerArray all_markers;
     visualization_msgs::Marker wall_marker;
     int wall_id = 0;
-    int n_height = 0;
-    int n_width = 0;
-    float map_resolution = 0;
-    float min_x = 0;
-    float min_y = 0;
 
      // matrix representation
-    //int map_m[][];  
+    int map_m[n_height][n_width] = {};  
 
     // vector representation                 
-    std::vector<signed char> map_v = std::vector<signed char>();    
-
-    void set_map_settings(float map_width, float map_height, float temp_map_resolution, float m_x, float m_y)
-    {
-        n_height = ceil(map_height/temp_map_resolution);    // [1]
-        n_width = ceil(map_width/temp_map_resolution);      // [1]
-        map_resolution = temp_map_resolution;
-        map_v = std::vector<signed char>(n_height*n_width);  
-        min_x = m_x;
-        min_y = m_y;
-    }
-
-    void add_to_map(int x, int y, int value, string flag) 
+    std::vector<signed char> map_v = std::vector<signed char>(n_height*n_width);    
+  
+    void add_to_map(int x, int y, int value) 
     { 
         if (is_in_bounds(x,y) == true)
         {
-            //map_m[y][x] = value;
-            //map_v[x + y*n_width] = map_m[y][x];
-            map_v[x + y*n_width] = value;
-            
-            if (value == 100){
-                inflate_map_local(x, y, flag);
-            }
-            
+            map_m[y][x] = value;
+            map_v[x + y*n_width] = map_m[y][x];
         }
     } 
 
@@ -99,19 +120,19 @@ class GridMap
         for (int i = 0; i < ray.size(); i++){
             int x = std::get<0>(ray[i]);
             int y = std::get<1>(ray[i]);
-            add_to_map(x,y,100, "");
+            add_to_map(x,y,100);
 
             // create high walls
-            float x0 = std::get<0>(ray[i])*map_resolution + min_x;
-            float y0 = std::get<1>(ray[i])*map_resolution + min_y;
+            float x0 = std::get<0>(ray[i])*map_resolution;
+            float y0 = std::get<1>(ray[i])*map_resolution;
 
             // angle and distance
             double angle = atan2(y0-y0,x0-x0);
             double dist = sqrt(pow(x0-x0,2) + pow(y0-y0,2));
 
             // set pose
-            wall_marker.pose.position.x = x0 + map_resolution/2;
-            wall_marker.pose.position.y = y0 + map_resolution/2;
+            wall_marker.pose.position.x = (x0+x0)/2 + map_resolution/2;
+            wall_marker.pose.position.y = (y0+y0)/2 + map_resolution/2;
             //wall_marker.text=line_stream.str();
             tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
             tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
@@ -174,36 +195,6 @@ class GridMap
         return traversed;
     }
 
-    void inflate_map_local(int x, int y, string flag){
-        int radius = 5;
-        if (flag == "added_wall") radius = 4;
-        int inflate_x = 0;
-        int inflate_y = 0;
-        int cell_state = 0;
-
-        // scan a square around the point with side length 2*self.radius
-        for (int i = -radius; i < radius+1; i++)
-        {
-            for (int j = -radius; j < radius+1; j++)
-            {
-                inflate_x = x + i;
-                inflate_y = y + j;
-
-                // make sure that the point is within the disk of radius self.radius
-                if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius)
-                {
-                    cell_state = map_v[inflate_x + inflate_y*n_width];
-
-                    // make sure that the cell we want to fill in isn't occupied (or already c_space)
-                    if ((cell_state != 100) && (cell_state != -2))
-                    {
-                        add_to_map(inflate_x, inflate_y, -2, ""); 
-                    } 
-                }   
-            }                      
-        }   
-    }
-
     void inflate_map()
     {
         int radius = 5;
@@ -215,9 +206,8 @@ class GridMap
         {
             for (int y = 0; y < n_height; y++)
             {  
-                 
                 // if the cell is occupied_space, begin the fill
-                if (map_v[x + y*n_width] == 100)
+                if (map_m[y][x] == 100)
                 {    
                     // scan a square around the point with side length 2*self.radius
                      for (int i = -radius; i < radius+1; i++)
@@ -230,12 +220,12 @@ class GridMap
                             // make sure that the point is within the disk of radius self.radius
                             if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius)
                             {
-                                cell_state = map_v[inflate_x + inflate_y*n_width];
+                                cell_state = map_m[inflate_y][inflate_x];
 
                                 // make sure that the cell we want to fill in isn't occupied (or already c_space)
                                 if ((cell_state != 100) && (cell_state != -2))
                                 {
-                                    add_to_map(inflate_x, inflate_y, -2, ""); 
+                                    add_to_map(inflate_x, inflate_y, -2); 
                                 } 
                             }   
                         }                      
@@ -244,62 +234,60 @@ class GridMap
             }
         }
     }
-}; 
 
+}; 
 
 GridMap ras_map;
 
-void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
+void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-    int x_int = 0;
-    int y_int = 0;
-    int count = 0;
-  for (int i = 0; i < msg->poses.size(); i++)
-  {
-    x_int = (int)((msg->poses[i].position.x-ras_map.min_x)/ras_map.map_resolution);
-    y_int = (int)((msg->poses[i].position.y-ras_map.min_y)/ras_map.map_resolution);
-
-    if(ras_map.is_in_bounds(x_int,y_int) == false)
-    {
-        continue;
-    }
-
-
-    if (ras_map.map_v[x_int+y_int*ras_map.n_width] == 0 || ras_map.map_v[x_int+y_int*ras_map.n_width] == -2)
-    {
-        count ++;
-    }
-    else
-    {
-        if count > 15
-        {
-            for(int j = i; i > i -count; j--)
-            {
-                ras_map.add_to_map(x_int,y_int,100,"added_wall");
-            }
-
-        }
-        count = 0;
-    }
-
-    
-  }
+    tf::TransformListener listener(ros::Duration(10));
+    geometry_msgs::Pose pose ;
+    listener.transformPoint("map", msg->pose.pose, pose);
+    ras_map.add_to_map((int)(pose.position.x/map_resolution),(int)(pose.position.y/map_resolution),50);
 }
 
 
 int main(int argc, char **argv)
 {
     // Set up ROS.
-    ros::init(argc, argv, "maze_map_node");
+    ros::init(argc, argv, "map_visit_node");
     ros::NodeHandle n("~");
     ros::Rate r(10);
     
     // from ras_grid_map-------------------------------------
     // initialize publisher
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1000);
-    ros::Subscriber sub = n.subscribe("/wall_position", 1, wallCallback);
+    ros::Subscriber sub = n.subscribe("/odom_filter", 1, odomCallback);
     // loop rate frequency
     ros::Rate loop_rate(1);
+
+    // initalize objects for map pose
+    geometry_msgs::Pose origin_pose;
+    geometry_msgs::Point origin_location;
+    geometry_msgs::Quaternion origin_orientation;
+    origin_pose.position = origin_location;
+    origin_pose.orientation = origin_orientation;
+
+    // initialze the occupancy grid object
+    nav_msgs::OccupancyGrid grid;                   
+    grid.info.resolution = map_resolution;
+    grid.info.height = n_height;
+    grid.info.width = n_width;
+    grid.info.origin = origin_pose;
+
+    // GridMap object
+    
+
+    ROS_INFO("Cells height: %d", n_height);
+    ROS_INFO("Cells width: %d", n_width);
+
+    // create some rays
+    //map.add_ray(20,20,67,67);
+    //map.add_ray(100,40,30,40);
+    //map.add_ray(2,2,10,50);
+    // ras_grid_map end ------------------------------------------.
+
 
     string _map_file;
     string _map_frame = "/map";
@@ -312,77 +300,11 @@ int main(int argc, char **argv)
     ROS_INFO_STREAM("The maze map will be published in frame " << _map_frame);
     ROS_INFO_STREAM("The maze map will be published on topic " << _map_topic);
 
-    ifstream map_fs1; map_fs1.open(_map_file.c_str());
-    if (!map_fs1.is_open()){
+    ifstream map_fs; map_fs.open(_map_file.c_str());
+    if (!map_fs.is_open()){
         ROS_ERROR_STREAM("Could not read maze map from "<<_map_file<<". Please double check that the file exists. Aborting.");
         return -1;
     }
-
-    // GET MAP SPECIFICATIONS
-    float x_min = 9999;
-    float y_min = 9999;
-    float x_max = -9999;
-    float y_max = -9999;
-    float width = 0;
-    float height = 0;
-
-  
-    string line_;
-    while (getline(map_fs1, line_)){
-        if (line_[0] == '#') {
-            // comment -> skip
-            continue;
-        }
-
-        double max_num = std::numeric_limits<double>::max();
-        double x1= max_num,
-               x2= max_num,
-               y1= max_num,
-               y2= max_num;
-
-        std::istringstream line_stream(line_);
-        line_stream >> x1 >> y1 >> x2 >> y2;
-        if ((x1 == max_num) || ( x2 == max_num) || (y1 == max_num) || (y2 == max_num)){
-            ROS_WARN("Segment error. Skipping line: %s",line_.c_str());
-        }
-
-        if (x1 < x_min) x_min = x1;
-        if (x2 < x_min) x_min = x2;
-        if (y1 < y_min) y_min = y1;
-        if (y2 < y_min) y_min = y2;
-        if (x1 > x_max) x_max = x1;
-        if (x2 > x_max) x_max = x2;
-        if (y1 > y_max) y_max = y1;
-        if (y2 > y_max) y_max = y2;    
-    }
-
-    width = float(x_max - x_min);
-    height = float(y_max - y_min);
-   
-    //x_min = -0.45;
-    ras_map.set_map_settings(width,height,0.03,x_min,y_min);
-    //ras_map.set_map_settings(5,5,0.03,0,0);
-
-    // initalize objects for map pose
-    geometry_msgs::Pose origin_pose;
-    geometry_msgs::Point origin_location;
-    geometry_msgs::Quaternion origin_orientation;
-    origin_pose.position = origin_location;
-    origin_pose.position.x = x_min;
-    origin_pose.position.y = y_min;
-    origin_pose.orientation = origin_orientation;
-
-    // initialze the occupancy grid object
-    nav_msgs::OccupancyGrid grid;                   
-    grid.info.resolution = ras_map.map_resolution;
-    grid.info.height = ras_map.n_height;
-    grid.info.width = ras_map.n_width;
-    grid.info.origin = origin_pose;
-
-    // GridMap object
-    ROS_INFO("Cells height: %d", ras_map.n_height);
-    ROS_INFO("Cells width: %d", ras_map.n_width);
-
 
     ros::Publisher vis_pub = n.advertise<visualization_msgs::MarkerArray>( _map_topic, 0 );
     //visualization_msgs::MarkerArray all_markers;
@@ -392,25 +314,18 @@ int main(int argc, char **argv)
     ras_map.wall_marker.ns = "world";
     ras_map.wall_marker.type = visualization_msgs::Marker::CUBE;
     ras_map.wall_marker.action = visualization_msgs::Marker::ADD;
-    ras_map.wall_marker.scale.x = 0.03;
-    ras_map.wall_marker.scale.y = 0.03;
+    ras_map.wall_marker.scale.x = 0.05;
+    ras_map.wall_marker.scale.y = 0.05;
     ras_map.wall_marker.scale.z = 0.2;
     ras_map.wall_marker.color.a = 1.0;
-    ras_map.wall_marker.color.r = (0.0/255.0);
-    ras_map.wall_marker.color.g = (255.0/255.0);
+    ras_map.wall_marker.color.r = (255.0/255.0);
+    ras_map.wall_marker.color.g = (0.0/255.0);
     ras_map.wall_marker.color.b = (0.0/255.0);
     ras_map.wall_marker.pose.position.z = 0.1;
 
-
-    ifstream map_fs2; map_fs2.open(_map_file.c_str());
-    if (!map_fs2.is_open()){
-        ROS_ERROR_STREAM("Could not read maze map from "<<_map_file<<". Please double check that the file exists. Aborting.");
-        return -1;
-    }
-
     string line;
-    //int wall_id = 0;
-    while (getline(map_fs2, line)){
+    int wall_id = 0;
+    while (getline(map_fs, line)){
 
         if (line[0] == '#') {
             // comment -> skip
@@ -432,12 +347,33 @@ int main(int argc, char **argv)
         }
 
         // add ray --------------------------------------------------
-        ras_map.add_ray((int)((x1-x_min)/ras_map.map_resolution),(int)((y1-y_min)/ras_map.map_resolution),(int)((x2-x_min)/ras_map.map_resolution),(int)((y2-y_min)/ras_map.map_resolution));
+        ras_map.add_ray((int)(x1/map_resolution),(int)(y1/map_resolution),(int)(x2/map_resolution),(int)(y2/map_resolution));
+
+        // angle and distance
+        /*
+        double angle = atan2(y2-y1,x2-x1);
+        double dist = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
+
+        // set pose
+        wall_marker.scale.x = std::max(0.01,dist);
+        wall_marker.pose.position.x = (x1+x2)/2;
+        wall_marker.pose.position.y = (y1+y2)/2;
+        wall_marker.text=line_stream.str();
+        tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
+        tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
+
+        // add to array
+        wall_marker.id = wall_id;
+        all_markers.markers.push_back(wall_marker);
+        wall_id++;
+        */
+
+       
     }
     //ROS_INFO_STREAM("Read "<<wall_id<<" walls from map file.");
 
     // inflate the map
-    //as_map.inflate_map();
+    ras_map.inflate_map();
 
     // Main loop.
     while (n.ok())
@@ -445,7 +381,7 @@ int main(int argc, char **argv)
         ROS_INFO_STREAM("!hello!");
 
         // publish high walls
-        vis_pub.publish(ras_map.all_markers);
+        //vis_pub.publish(ras_map.all_markers);
 
         // publish the grid map
         grid.data = ras_map.map_v;
