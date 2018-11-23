@@ -63,13 +63,18 @@ class GridMap
         min_y = m_y;
     }
 
-    void add_to_map(int x, int y, int value) 
+    void add_to_map(int x, int y, int value, string flag) 
     { 
         if (is_in_bounds(x,y) == true)
         {
             //map_m[y][x] = value;
             //map_v[x + y*n_width] = map_m[y][x];
             map_v[x + y*n_width] = value;
+            
+            if (value == 100){
+                inflate_map_local(x, y, flag);
+            }
+            
         }
     } 
 
@@ -94,7 +99,7 @@ class GridMap
         for (int i = 0; i < ray.size(); i++){
             int x = std::get<0>(ray[i]);
             int y = std::get<1>(ray[i]);
-            add_to_map(x,y,100);
+            add_to_map(x,y,100, "");
 
             // create high walls
             float x0 = std::get<0>(ray[i])*map_resolution + min_x;
@@ -169,6 +174,36 @@ class GridMap
         return traversed;
     }
 
+    void inflate_map_local(int x, int y, string flag){
+        int radius = 5;
+        if (flag == "added_wall") radius = 4;
+        int inflate_x = 0;
+        int inflate_y = 0;
+        int cell_state = 0;
+
+        // scan a square around the point with side length 2*self.radius
+        for (int i = -radius; i < radius+1; i++)
+        {
+            for (int j = -radius; j < radius+1; j++)
+            {
+                inflate_x = x + i;
+                inflate_y = y + j;
+
+                // make sure that the point is within the disk of radius self.radius
+                if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius)
+                {
+                    cell_state = map_v[inflate_x + inflate_y*n_width];
+
+                    // make sure that the cell we want to fill in isn't occupied (or already c_space)
+                    if ((cell_state != 100) && (cell_state != -2))
+                    {
+                        add_to_map(inflate_x, inflate_y, -2, ""); 
+                    } 
+                }   
+            }                      
+        }   
+    }
+
     void inflate_map()
     {
         int radius = 5;
@@ -200,7 +235,7 @@ class GridMap
                                 // make sure that the cell we want to fill in isn't occupied (or already c_space)
                                 if ((cell_state != 100) && (cell_state != -2))
                                 {
-                                    add_to_map(inflate_x, inflate_y, -2); 
+                                    add_to_map(inflate_x, inflate_y, -2, ""); 
                                 } 
                             }   
                         }                      
@@ -220,7 +255,7 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
   {
     x = msg->poses[i].position.x;
     y = msg->poses[i].position.y;
-    ras_map.add_to_map((int)((x)/ras_map.map_resolution),(int)((y)/ras_map.map_resolution),100);
+    ras_map.add_to_map((int)((x-ras_map.min_x)/ras_map.map_resolution),(int)((y-ras_map.min_y)/ras_map.map_resolution),100,"added_wall");
   }
 }
 
@@ -375,7 +410,7 @@ int main(int argc, char **argv)
     //ROS_INFO_STREAM("Read "<<wall_id<<" walls from map file.");
 
     // inflate the map
-    ras_map.inflate_map();
+    //as_map.inflate_map();
 
     // Main loop.
     while (n.ok())

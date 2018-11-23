@@ -88,6 +88,11 @@ class MCL_py():
         self.rspeed = 0 
         self.robot_odom = Odometry()
         self.RESET = False
+
+        self.x_reset = 0.2
+        self.y_reset = 0.2
+        self.theta_reset = math.pi/2
+
         #self.particle_cloud = PoseArray()
         
         ### FOR PF
@@ -183,9 +188,9 @@ class MCL_py():
 
         if self.RESET:
             # robot_odom is reset to initial position ------------------------------------------------------------------------------------
-            self.temp_x = -0.2
-            self.temp_y = -0.2
-            self.sita = math.pi/2 - 0.4
+            self.temp_x = self.x_reset
+            self.temp_y = self.y_reset
+            self.sita = self.theta_reset
         else:
             pass
 
@@ -389,6 +394,7 @@ def main():
 
     # create an instance of class MCL_py
     mcl_obj = MCL_py() 
+    mcl_obj.RESET = True
     
     rate = rospy.Rate(mcl_obj.control_frequency)
 
@@ -413,7 +419,6 @@ def main():
     # In this particular case, subscriber callbacks have not yet been called, so everything initializes to 0
     #if mcl_obj.received_odom == 1 and mcl_obj.received_scan == 1 and mcl_obj.received_map == 1:  
     
-    #mcl_obj.reset_particles()
     e = 0
     while not rospy.is_shutdown():
         e = e + 1
