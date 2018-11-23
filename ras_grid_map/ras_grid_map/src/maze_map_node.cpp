@@ -271,7 +271,7 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
     }
     else
     {
-        if count > 15
+        if (count > 15)
         {
             for(int j = i; i > i -count; j--)
             {
