@@ -1,46 +1,10 @@
-/*
- *  world_node.cpp
- *
- *
- *  Created on: Sept 18, 2014
- *  Authors:   Rares Ambrus
- *            raambrus <at> kth.se
- */
-
-/* Copyright (c) 2015, Rares Ambrus, CVAP, KTH
-   All rights reserved.
-
-   Redistribution and use in source and binary forms, with or without
-   modification, are permitted provided that the following conditions are met:
-      * Redistributions of source code must retain the above copyright
-        notice, this list of conditions and the following disclaimer.
-      * Redistributions in binary form must reproduce the above copyright
-        notice, this list of conditions and the following disclaimer in the
-        documentation and/or other materials provided with the distribution.
-      * Neither the name of KTH nor the
-        names of its contributors may be used to endorse or promote products
-        derived from this software without specific prior written permission.
-
-   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-   ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-   DISCLAIMED. IN NO EVENT SHALL KTH BE LIABLE FOR ANY
-   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-   (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-   LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*/
-
-
 // ROS includes.
 #include <ros/ros.h>
 #include <ros/time.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/Point.h>
-#include <tf/tf.h>
+
 #include <tf/transform_listener.h>
 // Boost includes
 #include <stdio.h>
@@ -64,6 +28,7 @@
 #include <sstream>
 #include <vector>
 
+
 using namespace std;
 
 typedef std::tuple<int, int> tuple2;
@@ -80,8 +45,6 @@ double x,y;
 class GridMap 
 { 
     public: 
-    visualization_msgs::MarkerArray all_markers;
-    visualization_msgs::Marker wall_marker;
     int wall_id = 0;
 
      // matrix representation
@@ -129,17 +92,6 @@ class GridMap
             // angle and distance
             double angle = atan2(y0-y0,x0-x0);
             double dist = sqrt(pow(x0-x0,2) + pow(y0-y0,2));
-
-            // set pose
-            wall_marker.pose.position.x = (x0+x0)/2 + map_resolution/2;
-            wall_marker.pose.position.y = (y0+y0)/2 + map_resolution/2;
-            //wall_marker.text=line_stream.str();
-            tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
-            tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
-
-            // add to array
-            wall_marker.id = wall_id;
-            all_markers.markers.push_back(wall_marker);
             wall_id++;            
         }
     }
@@ -242,22 +194,22 @@ GridMap ras_map;
 void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     tf::TransformListener listener(ros::Duration(10));
-    geometry_msgs::Pose pose ;
-    listener.transformPoint("map", msg->pose.pose, pose);
-    ras_map.add_to_map((int)(pose.position.x/map_resolution),(int)(pose.position.y/map_resolution),50);
+    x = msg->pose.pose.position.x;
+    y = msg->pose.pose.position.y;
+    ras_map.add_to_map((int)(x/map_resolution),(int)(y/map_resolution),50);
 }
 
 
 int main(int argc, char **argv)
 {
     // Set up ROS.
-    ros::init(argc, argv, "map_visit_node");
+    ros::init(argc, argv, "discovery_node");
     ros::NodeHandle n("~");
     ros::Rate r(10);
     
     // from ras_grid_map-------------------------------------
     // initialize publisher
-    ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1000);
+    ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("discovery", 1000);
     ros::Subscriber sub = n.subscribe("/odom_filter", 1, odomCallback);
     // loop rate frequency
     ros::Rate loop_rate(1);
@@ -306,23 +258,6 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    ros::Publisher vis_pub = n.advertise<visualization_msgs::MarkerArray>( _map_topic, 0 );
-    //visualization_msgs::MarkerArray all_markers;
-    //visualization_msgs::Marker wall_marker;
-    ras_map.wall_marker.header.frame_id = _map_frame;
-    ras_map.wall_marker.header.stamp = ros::Time();
-    ras_map.wall_marker.ns = "world";
-    ras_map.wall_marker.type = visualization_msgs::Marker::CUBE;
-    ras_map.wall_marker.action = visualization_msgs::Marker::ADD;
-    ras_map.wall_marker.scale.x = 0.05;
-    ras_map.wall_marker.scale.y = 0.05;
-    ras_map.wall_marker.scale.z = 0.2;
-    ras_map.wall_marker.color.a = 1.0;
-    ras_map.wall_marker.color.r = (255.0/255.0);
-    ras_map.wall_marker.color.g = (0.0/255.0);
-    ras_map.wall_marker.color.b = (0.0/255.0);
-    ras_map.wall_marker.pose.position.z = 0.1;
-
     string line;
     int wall_id = 0;
     while (getline(map_fs, line)){
@@ -348,26 +283,6 @@ int main(int argc, char **argv)
 
         // add ray --------------------------------------------------
         ras_map.add_ray((int)(x1/map_resolution),(int)(y1/map_resolution),(int)(x2/map_resolution),(int)(y2/map_resolution));
-
-        // angle and distance
-        /*
-        double angle = atan2(y2-y1,x2-x1);
-        double dist = sqrt(pow(x1-x2,2) + pow(y1-y2,2));
-
-        // set pose
-        wall_marker.scale.x = std::max(0.01,dist);
-        wall_marker.pose.position.x = (x1+x2)/2;
-        wall_marker.pose.position.y = (y1+y2)/2;
-        wall_marker.text=line_stream.str();
-        tf::Quaternion quat; quat.setRPY(0.0,0.0,angle);
-        tf::quaternionTFToMsg(quat, wall_marker.pose.orientation);
-
-        // add to array
-        wall_marker.id = wall_id;
-        all_markers.markers.push_back(wall_marker);
-        wall_id++;
-        */
-
        
     }
     //ROS_INFO_STREAM("Read "<<wall_id<<" walls from map file.");

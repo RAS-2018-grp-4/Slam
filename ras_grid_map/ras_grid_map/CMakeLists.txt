@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   roscpp
   std_msgs
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
@@ -141,6 +142,10 @@ target_link_libraries(ras_grid_map ${catkin_LIBRARIES})
 
 add_executable(maze_map_node src/maze_map_node.cpp)
 target_link_libraries(maze_map_node ${catkin_LIBRARIES})
+
+add_executable(discovery_node src/discovery_node.cpp)
+target_link_libraries(discovery_node ${catkin_LIBRARIES})
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
