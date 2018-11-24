@@ -249,43 +249,56 @@ class GridMap
 
 GridMap ras_map;
 
+/*
 void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
 {
     int x_int = 0;
     int y_int = 0;
     int count = 0;
+	
   for (int i = 0; i < msg->poses.size(); i++)
   {
     x_int = (int)((msg->poses[i].position.x-ras_map.min_x)/ras_map.map_resolution);
     y_int = (int)((msg->poses[i].position.y-ras_map.min_y)/ras_map.map_resolution);
+    ras_map.add_to_map(x_int,y_int,100,"added_wall");
 
-    if(ras_map.is_in_bounds(x_int,y_int) == false)
-    {
-        continue;
-    }
-
-
-    if (ras_map.map_v[x_int+y_int*ras_map.n_width] == 0 || ras_map.map_v[x_int+y_int*ras_map.n_width] == -2)
-    {
-        count ++;
-    }
-    else
-    {
-        if (count > 15)
-        {
-            for(int j = i; i > i -count; j--)
-            {
-                ras_map.add_to_map(x_int,y_int,100,"added_wall");
-            }
-
-        }
-        count = 0;
-    }
 
     
   }
 }
+*/
 
+void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
+{
+    int x_int = 0;
+    int y_int = 0;
+    int count = 0;
+
+
+    for (int i = 0; i < msg->poses.size(); i++)
+    {
+        x_int = (int)((msg->poses[i].position.x-ras_map.min_x)/ras_map.map_resolution);
+        y_int = (int)((msg->poses[i].position.y-ras_map.min_y)/ras_map.map_resolution);
+
+        if (ras_map.map_v[x_int + y_int*ras_map.n_width] == -2 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 0)
+        {
+            count++;
+        }
+        else
+        {
+            if (count >= 10)
+            {
+                for (int j = i; j > i - count; j--)
+                {   
+                    int x = (int)((msg->poses[j].position.x-ras_map.min_x)/ras_map.map_resolution);
+                    int y = (int)((msg->poses[j].position.y-ras_map.min_y)/ras_map.map_resolution);
+                    ras_map.add_to_map(x, y, 100, "added_wall");
+                }
+            }
+            count = 0;     
+        }
+    }   
+}
 
 int main(int argc, char **argv)
 {
