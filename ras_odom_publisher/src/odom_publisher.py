@@ -51,6 +51,7 @@ def reset_feedback(feedback_reset):
 #####################################################
 rospy.init_node('odom_publish_node', anonymous=True)
 pub_odom = rospy.Publisher('/robot_odom', Odometry, queue_size=1)
+self.pub_vel = rospy.Publisher('/vel', geometry_msgs.msg.Twist, queue_size=1)
 rate = rospy.Rate(10)
 
 rospy.Subscriber('/left_motor/encoder', phidgets.msg.motor_encoder, update_feedback_enc_left)
@@ -99,6 +100,7 @@ def publisher():
         #print(sita )
         x = x + 0.5 * (v_left + v_right) * math.cos(sita)*dt
         y = y + 0.5 * (v_left + v_right) * math.sin(sita)*dt
+        
         if RESET:
             x = 0.0
             y = 0.0
@@ -108,6 +110,19 @@ def publisher():
             pass       
 
         print(x, y)
+
+        vel = geometry_msgs.msg.Twist()
+        vel.linear.x = (1/base)  * (v_right - v_left)
+        vel.linear.y = 0.0
+        vel.linear.z = 0.0
+
+        vel.angular.x = 0.0
+        vel.angular.y = 0.0
+        vel.angular.z = math.sqrt(x*x + y*y)
+        pub_vel.publish(vel)
+
+
+
         ODOM.pose.pose.position.x = x
         ODOM.pose.pose.position.y = y
         
