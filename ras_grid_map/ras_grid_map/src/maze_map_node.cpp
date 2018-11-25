@@ -5,7 +5,8 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/Point.h>
-#include <tf/tf.h>
+#include <tf/transform_datatypes.h>
+#include <tf/transform_listener.h>
 
 // Boost includes
 #include <stdio.h>
@@ -20,6 +21,7 @@
 #include "std_msgs/String.h"
 #include "nav_msgs/OccupancyGrid.h"
 #include "nav_msgs/MapMetaData.h"
+#include "nav_msgs/Odometry.h"
 #include "geometry_msgs/Pose.h"
 #include "geometry_msgs/PointStamped.h"
 #include "geometry_msgs/PoseArray.h"
@@ -33,7 +35,8 @@ using namespace std;
 typedef std::tuple<int, int> tuple2;
 float x;
 float y;
-
+float z;
+float w;
 class GridMap 
 { 
     public: 
@@ -277,7 +280,7 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
         x_int = (int)((msg->poses[i].position.x-ras_map.min_x)/ras_map.map_resolution);
         y_int = (int)((msg->poses[i].position.y-ras_map.min_y)/ras_map.map_resolution);
 
-        if (ras_map.is_in_bounds(x_int, y_in))
+        if (ras_map.is_in_bounds(x_int, y_int))
         {
             if (ras_map.map_v[x_int + y_int*ras_map.n_width] == -2 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 0)
             {
@@ -309,6 +312,37 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
     }   
 }
 
+void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
+{
+    tf::TransformListener listener(ros::Duration(10));
+    x = msg->pose.pose.orientation.x;
+    y = msg->pose.pose.orientation.y;
+    z = msg->pose.pose.orientation.z;
+    w = msg->pose.pose.orientation.w;
+
+    tf::Quaternion q(x, y, z, w);
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+
+    double pos_x = msg->pose.pose.position.x;
+    double pos_y = msg->pose.pose.position.y;
+
+    double range = 0.3; //range camera can see
+
+    for(int i = range -0.1 ; i < (range + 0.1) ; i+=0.03)
+    {
+        double beta = atan2(0.75,i);
+        for (int j = yaw - beta  ; j < yaw + beta; j+= 0.1)
+        {
+            double visited_x = pos_x + cos(j)*i;
+            double visited_y = pos_y + sin(j)*i;
+            ras_map.add_to_map((int)(visited_x/ras_map.map_resolution),(int)(visited_y/ras_map.map_resolution),50,"");
+        }
+    }
+    //ras_map.add_to_map((int)(camera_visited_x/map_resolution),(int)(camera_visited_y/map_resolution),50);
+}
+
 int main(int argc, char **argv)
 {
     // Set up ROS.
@@ -319,7 +353,8 @@ int main(int argc, char **argv)
     // from ras_grid_map-------------------------------------
     // initialize publisher
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1000);
-    ros::Subscriber sub = n.subscribe("/wall_position", 1, wallCallback);
+    ros::Subscriber sub_wall = n.subscribe("/wall_position", 1, wallCallback);
+    ros::Subscriber sub_odom = n.subscribe("/robot_odom", 1, odomCallback);
     // loop rate frequency
     ros::Rate loop_rate(1);
 
