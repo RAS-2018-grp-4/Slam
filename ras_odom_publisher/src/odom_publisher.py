@@ -51,7 +51,7 @@ def reset_feedback(feedback_reset):
 #####################################################
 rospy.init_node('odom_publish_node', anonymous=True)
 pub_odom = rospy.Publisher('/robot_odom', Odometry, queue_size=1)
-self.pub_vel = rospy.Publisher('/vel', geometry_msgs.msg.Twist, queue_size=1)
+pub_vel = rospy.Publisher('/vel', geometry_msgs.msg.Twist, queue_size=1)
 rate = rospy.Rate(10)
 
 rospy.Subscriber('/left_motor/encoder', phidgets.msg.motor_encoder, update_feedback_enc_left)

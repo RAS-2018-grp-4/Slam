@@ -135,6 +135,9 @@ class MCL_py():
         # Publisher for particle scan transform
         self.pub_pscan = rospy.Publisher('/particlescan', PoseArray, queue_size=1)    
 
+        self.pub_vel = rospy.Publisher('/vel', geometry_msgs.msg.Twist, queue_size=1)
+
+
         # self.received_odom = 0
         # self.received_scan = 0
         # self.received_map = 0
@@ -193,6 +196,20 @@ class MCL_py():
             self.sita = self.theta_reset
         else:
             pass
+
+        vel_x = 0.5 * (self.v_left + self.v_right) * math.cos(self.sita)
+        vel_y = 0.5 * (self.v_left + self.v_right) * math.sin(self.sita)
+
+        vel = geometry_msgs.msg.Twist()
+        vel.linear.x = math.sqrt(vel_x*vel_x + vel_y*vel_y)       
+        vel.linear.y = 0.0
+        vel.linear.z = 0.0
+
+        vel.angular.x = 0.0
+        vel.angular.y = 0.0
+        vel.angular.z = (1/self.base)  * (self.v_right - self.v_left)
+ 
+        self.pub_vel.publish(vel)
 
         self.robot_odom.pose.pose.position.x = self.temp_x
         self.robot_odom.pose.pose.position.y = self.temp_y

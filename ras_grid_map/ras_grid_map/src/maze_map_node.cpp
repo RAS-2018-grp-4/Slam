@@ -277,7 +277,7 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
         x_int = (int)((msg->poses[i].position.x-ras_map.min_x)/ras_map.map_resolution);
         y_int = (int)((msg->poses[i].position.y-ras_map.min_y)/ras_map.map_resolution);
 
-        if (ras_map.is_in_bounds(x_int, y_in))
+        if (ras_map.is_in_bounds(x_int, y_int))
         {
             if (ras_map.map_v[x_int + y_int*ras_map.n_width] == -2 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 0)
             {
