@@ -29,6 +29,7 @@
 #include "geometry_msgs/Quaternion.h"
 #include <sstream>
 #include <vector>
+#include <math.h>       /* atan2 */
 
 using namespace std;
 
@@ -312,34 +313,44 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
     }   
 }
 
+int counter = 0;
 void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-    tf::TransformListener listener(ros::Duration(10));
-    x = msg->pose.pose.orientation.x;
-    y = msg->pose.pose.orientation.y;
-    z = msg->pose.pose.orientation.z;
-    w = msg->pose.pose.orientation.w;
-
-    tf::Quaternion q(x, y, z, w);
-    tf::Matrix3x3 m(q);
-    double roll, pitch, yaw;
-    m.getRPY(roll, pitch, yaw);
-
-    double pos_x = msg->pose.pose.position.x;
-    double pos_y = msg->pose.pose.position.y;
-
-    double range = 0.3; //range camera can see
-
-    for(int i = range -0.1 ; i < (range + 0.1) ; i+=0.03)
+    counter++;
+    if (counter >= 10)
     {
-        double beta = atan2(0.75,i);
-        for (int j = yaw - beta  ; j < yaw + beta; j+= 0.1)
+        //tf::TransformListener listener(ros::Duration(10));
+        x = msg->pose.pose.orientation.x;
+        y = msg->pose.pose.orientation.y;
+        z = msg->pose.pose.orientation.z;
+        w = msg->pose.pose.orientation.w;
+
+        tf::Quaternion q(x, y, z, w);
+        tf::Matrix3x3 m(q);
+        double roll, pitch, yaw;
+        m.getRPY(roll, pitch, yaw);
+
+        double pos_x = msg->pose.pose.position.x;
+        double pos_y = msg->pose.pose.position.y;
+
+        double range = 0.3; //range camera can see
+   
+
+        for(double i = range -0.1 ; i < (range + 0.1) ; i+=0.03)
         {
-            double visited_x = pos_x + cos(j)*i;
-            double visited_y = pos_y + sin(j)*i;
-            ras_map.add_to_map((int)(visited_x/ras_map.map_resolution),(int)(visited_y/ras_map.map_resolution),50,"");
+            double beta = atan2(0.75,i);      
+            for (double j = yaw - beta  ; j < yaw + beta; j+= 0.07)
+            {
+                double visited_x = pos_x + cos(j)*i;
+                double visited_y = pos_y + sin(j)*i;
+                ras_map.add_to_map((int)((visited_x-ras_map.min_x)/ras_map.map_resolution),(int)((visited_y-ras_map.min_y)/ras_map.map_resolution),50,"explored");
+            }    
         }
+        counter = 0;
     }
+    
+  
+
     //ras_map.add_to_map((int)(camera_visited_x/map_resolution),(int)(camera_visited_y/map_resolution),50);
 }
 
@@ -354,7 +365,7 @@ int main(int argc, char **argv)
     // initialize publisher
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1000);
     ros::Subscriber sub_wall = n.subscribe("/wall_position", 1, wallCallback);
-    ros::Subscriber sub_odom = n.subscribe("/robot_odom", 1, odomCallback);
+    ros::Subscriber sub_odom = n.subscribe("/robot_filter", 1, odomCallback);
     // loop rate frequency
     ros::Rate loop_rate(1);
 
