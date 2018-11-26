@@ -71,12 +71,23 @@ class GridMap
     { 
         if (is_in_bounds(x,y) == true)
         {
-            map_v[x + y*n_width] = value;
-            
-            if (value == 100){
-                inflate_map_local(x, y, flag);
-            }
-            
+            if (flag == "explored")
+            {
+                // if explored space, dont inflate
+                if (map_v[x + y*n_width] != -2 && map_v[x + y*n_width] != -20 && map_v[x + y*n_width] != 100)
+                {
+                    map_v[x + y*n_width] = value;
+                }      
+            }  
+            else
+            {
+                map_v[x + y*n_width] = value;
+                    
+                // if wall, inflate
+                if (value == 100){
+                    inflate_map_local(x, y, flag);
+                }
+            }        
         }
     } 
 
@@ -184,9 +195,9 @@ class GridMap
         int cell_state = 0;
 
         // scan a square around the point with side length 2*self.radius
-        for (int i = -radius; i < radius+1; i++)
+        for (int i = -radius-3; i < radius+4; i++)
         {
-            for (int j = -radius; j < radius+1; j++)
+            for (int j = -radius-3; j < radius+4; j++)
             {
                 inflate_x = x + i;
                 inflate_y = y + j;
@@ -201,7 +212,17 @@ class GridMap
                     {
                         add_to_map(inflate_x, inflate_y, -2, ""); 
                     } 
-                }   
+                }  
+                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 2)
+                {
+                    cell_state = map_v[inflate_x + inflate_y*n_width];
+
+                    // make sure that the cell we want to fill in isn't occupied (or already c_space)
+                    if ((cell_state != 100) && (cell_state != -2))
+                    {
+                        add_to_map(inflate_x, inflate_y, -20, ""); 
+                    }   
+                } 
             }                      
         }   
     }
