@@ -299,7 +299,7 @@ int counter = 0;
 void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     counter++;
-    if (counter >= 10)
+    if (counter >= 5)
     {
         //tf::TransformListener listener(ros::Duration(10));
         x = msg->pose.pose.orientation.x;
@@ -409,6 +409,7 @@ int main(int argc, char **argv)
    
     //x_min = -0.45;
     ras_map.set_map_settings(width,height,0.03,x_min,y_min);
+    ras_map_exploration.set_map_settings(width,height,0.03,x_min,y_min);
     //ras_map.set_map_settings(5,5,0.03,0,0);
 
     // initalize objects for map pose
@@ -505,7 +506,7 @@ int main(int argc, char **argv)
         grid.data = ras_map.map_v;      
         map_pub.publish(grid);
 
-        grid.data = ras_map_exploration.map_v;
+        grid_exploration.data = ras_map_exploration.map_v;
         map_pub_exploration.publish(grid_exploration);
 
         ros::spinOnce();
