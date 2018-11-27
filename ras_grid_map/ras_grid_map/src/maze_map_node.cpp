@@ -334,6 +334,28 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
     }   
 }
 
+
+void batteryCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
+{
+    int x_int = 0;
+    int y_int = 0;
+
+    for (int i = 0; i < msg->poses.size(); i++)
+    {
+        x_int = (int)((msg->poses[i].position.x-ras_map.min_x)/ras_map.map_resolution);
+        y_int = (int)((msg->poses[i].position.y-ras_map.min_y)/ras_map.map_resolution);
+
+        if (ras_map.is_in_bounds(x_int, y_int))
+        {
+            if (ras_map.map_v[x_int + y_int*ras_map.n_width] == -2 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 0 || ras_map.map_v[x_int + y_int*ras_map.n_width] == -20 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 50)
+            {
+                ras_map.add_to_map(x_int, y_int, 100, "added_wall");
+            }
+        }     
+    }   
+}
+
+
 int counter = 0;
 void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
@@ -386,6 +408,7 @@ int main(int argc, char **argv)
     // initialize publisher
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1000);
     ros::Subscriber sub_wall = n.subscribe("/wall_position", 1, wallCallback);
+    ros::Subscriber sub_battery = n.subscribe("/battery_position_map", 1, batteryCallback);
     ros::Subscriber sub_odom = n.subscribe("/robot_filter", 1, odomCallback);
     // loop rate frequency
     ros::Rate loop_rate(1);
