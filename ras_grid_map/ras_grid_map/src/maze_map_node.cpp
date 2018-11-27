@@ -41,7 +41,6 @@ float w;
 class GridMap 
 { 
     public: 
-
     visualization_msgs::MarkerArray all_markers;
     visualization_msgs::Marker wall_marker;
     int wall_id = 0;
@@ -50,9 +49,6 @@ class GridMap
     float map_resolution = 0;
     float min_x = 0;
     float min_y = 0;
-
-     // matrix representation
-    //int map_m[][];  
 
     // vector representation                 
     std::vector<signed char> map_v = std::vector<signed char>();    
@@ -71,19 +67,19 @@ class GridMap
     { 
         if (is_in_bounds(x,y) == true)
         {
-            if (flag == "explored")
+            if (flag == "explored" || flag == "inflation" || flag == "no_inflation")
             {
-                // if explored space, dont inflate
-                if (map_v[x + y*n_width] != -2 && map_v[x + y*n_width] != -20 && map_v[x + y*n_width] != 100)
+                // if explored space or inflation, dont inflate
+                if (map_v[x + y*n_width] != 100)
                 {
                     map_v[x + y*n_width] = value;
                 }      
             }  
             else
             {
+                // otherwise if wall, inflate
                 map_v[x + y*n_width] = value;
                     
-                // if wall, inflate
                 if (value == 100){
                     inflate_map_local(x, y, flag);
                 }
@@ -189,7 +185,7 @@ class GridMap
 
     void inflate_map_local(int x, int y, string flag){
         int radius = 5;
-        if (flag == "added_wall") radius = 4;
+        if (flag == "added_wall" || flag == "added_battery") radius = 4;
         int inflate_x = 0;
         int inflate_y = 0;
         int cell_state = 0;
@@ -210,7 +206,7 @@ class GridMap
                     // make sure that the cell we want to fill in isn't occupied (or already c_space)
                     if ((cell_state != 100) && (cell_state != -2))
                     {
-                        add_to_map(inflate_x, inflate_y, -2, ""); 
+                        add_to_map(inflate_x, inflate_y, -2, "inflation"); 
                     } 
                 }  
                 else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 2)
@@ -220,76 +216,17 @@ class GridMap
                     // make sure that the cell we want to fill in isn't occupied (or already c_space)
                     if ((cell_state != 100) && (cell_state != -2))
                     {
-                        add_to_map(inflate_x, inflate_y, -20, ""); 
+                        add_to_map(inflate_x, inflate_y, -20, "inflation"); 
                     }   
                 } 
             }                      
         }   
     }
-
-    void inflate_map()
-    {
-        int radius = 5;
-        int inflate_x = 0;
-        int inflate_y = 0;
-        int cell_state = 0;
-
-        for (int x = 0; x < n_width; x++)
-        {
-            for (int y = 0; y < n_height; y++)
-            {  
-                 
-                // if the cell is occupied_space, begin the fill
-                if (map_v[x + y*n_width] == 100)
-                {    
-                    // scan a square around the point with side length 2*self.radius
-                     for (int i = -radius; i < radius+1; i++)
-                     {
-                        for (int j = -radius; j < radius+1; j++)
-                        {
-                            inflate_x = x + i;
-                            inflate_y = y + j;
-
-                            // make sure that the point is within the disk of radius self.radius
-                            if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius)
-                            {
-                                cell_state = map_v[inflate_x + inflate_y*n_width];
-
-                                // make sure that the cell we want to fill in isn't occupied (or already c_space)
-                                if ((cell_state != 100) && (cell_state != -2))
-                                {
-                                    add_to_map(inflate_x, inflate_y, -2, ""); 
-                                } 
-                            }   
-                        }                      
-                    }                                               
-                }
-            }
-        }
-    }
 }; 
 
 
 GridMap ras_map;
-
-/*
-void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
-{
-    int x_int = 0;
-    int y_int = 0;
-    int count = 0;
-	
-  for (int i = 0; i < msg->poses.size(); i++)
-  {
-    x_int = (int)((msg->poses[i].position.x-ras_map.min_x)/ras_map.map_resolution);
-    y_int = (int)((msg->poses[i].position.y-ras_map.min_y)/ras_map.map_resolution);
-    ras_map.add_to_map(x_int,y_int,100,"added_wall");
-
-
-    
-  }
-}
-*/
+GridMap ras_map_exploration;
 
 void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
 {
@@ -317,6 +254,7 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
                         int x = (int)((msg->poses[j].position.x-ras_map.min_x)/ras_map.map_resolution);
                         int y = (int)((msg->poses[j].position.y-ras_map.min_y)/ras_map.map_resolution);
                         ras_map.add_to_map(x, y, 100, "added_wall");
+                        ras_map_exploration.add_to_map(x, y, 100, "no_inflation");
                     }
                 }
             }
@@ -349,7 +287,8 @@ void batteryCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
         {
             if (ras_map.map_v[x_int + y_int*ras_map.n_width] == -2 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 0 || ras_map.map_v[x_int + y_int*ras_map.n_width] == -20 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 50)
             {
-                ras_map.add_to_map(x_int, y_int, 100, "added_wall");
+                ras_map.add_to_map(x_int, y_int, 100, "added_battery");
+                ras_map_exploration.add_to_map(x_int, y_int, 100, "no_inflation");
             }
         }     
     }   
@@ -386,15 +325,11 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
             {
                 double visited_x = pos_x + cos(j)*i;
                 double visited_y = pos_y + sin(j)*i;
-                ras_map.add_to_map((int)((visited_x-ras_map.min_x)/ras_map.map_resolution),(int)((visited_y-ras_map.min_y)/ras_map.map_resolution),50,"explored");
+                ras_map_exploration.add_to_map((int)((visited_x-ras_map.min_x)/ras_map.map_resolution), (int)((visited_y-ras_map.min_y)/ras_map.map_resolution), 50, "explored");
             }    
         }
         counter = 0;
     }
-    
-  
-
-    //ras_map.add_to_map((int)(camera_visited_x/map_resolution),(int)(camera_visited_y/map_resolution),50);
 }
 
 int main(int argc, char **argv)
@@ -407,6 +342,7 @@ int main(int argc, char **argv)
     // from ras_grid_map-------------------------------------
     // initialize publisher
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1000);
+    ros::Publisher map_pub_exploration = n.advertise<nav_msgs::OccupancyGrid>("map_explored", 1000);
     ros::Subscriber sub_wall = n.subscribe("/wall_position", 1, wallCallback);
     ros::Subscriber sub_battery = n.subscribe("/battery_position_map", 1, batteryCallback);
     ros::Subscriber sub_odom = n.subscribe("/robot_filter", 1, odomCallback);
@@ -491,6 +427,12 @@ int main(int argc, char **argv)
     grid.info.width = ras_map.n_width;
     grid.info.origin = origin_pose;
 
+    nav_msgs::OccupancyGrid grid_exploration;                   
+    grid_exploration.info.resolution = ras_map_exploration.map_resolution;
+    grid_exploration.info.height = ras_map_exploration.n_height;
+    grid_exploration.info.width = ras_map_exploration.n_width;
+    grid_exploration.info.origin = origin_pose;
+
     // GridMap object
     ROS_INFO("Cells height: %d", ras_map.n_height);
     ROS_INFO("Cells width: %d", ras_map.n_width);
@@ -560,8 +502,11 @@ int main(int argc, char **argv)
         vis_pub.publish(ras_map.all_markers);
 
         // publish the grid map
-        grid.data = ras_map.map_v;
+        grid.data = ras_map.map_v;      
         map_pub.publish(grid);
+
+        grid.data = ras_map_exploration.map_v;
+        map_pub_exploration.publish(grid_exploration);
 
         ros::spinOnce();
         r.sleep();
