@@ -602,6 +602,18 @@ int main(int argc, char **argv)
     }
     
 
+    // make starting area explored
+    int start_x = 6;
+    int start_y = 6;
+    int range = 12;
+    for (int i = start_x -range; i < start_x + range ; i++)
+        for (int j = start_y -range ; j < start_y + range ;j ++)
+            if ((check_visible(start_x,start_y,i,j) )&& ras_map_exploration.is_in_bounds(i,j))
+                ras_map_exploration.add_to_map(i,j,50,"explored");
+
+
+
+
     // Main loop.
     int counter = 0;
     while (n.ok())
