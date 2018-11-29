@@ -30,7 +30,7 @@
 #include <sstream>
 #include <vector>
 #include <math.h>       /* atan2 */
-
+#include <ros/console.h>
 using namespace std;
 
 typedef std::tuple<int, int> tuple2;
@@ -61,6 +61,43 @@ class GridMap
         map_v = std::vector<signed char>(n_height*n_width);  
         min_x = m_x;
         min_y = m_y;
+    }
+
+    void map_to_file()
+    {
+        ofstream file;
+        file.open("/home/ras14/catkin_ws/src/round1map.txt");
+           
+        string output = "";  
+        for (int i = 0; i < n_height*n_width; i++)
+        {     
+
+            output += to_string((int)map_v[i]) + "\n";
+        }
+        file << output;
+        file.close();
+
+        //cout << output <<endl<<endl<<endl<<endl;
+    }
+
+    void refresh_map()
+    {
+        string line;
+        ifstream myfile;
+        myfile.open("/home/ras14/catkin_ws/src/round1map.txt");
+
+        int i = 0;
+        if (myfile.is_open())
+        {
+            while (getline(myfile,line))
+            {
+                map_v[i] = stoi(line);
+                i++;
+            }
+            myfile.close();
+        }
+        else cout << "Unable to open file"; 
+ 
     }
 
     void add_to_map(int x, int y, int value, string flag) 
@@ -99,7 +136,7 @@ class GridMap
         return false;
     }
 
-    void add_ray(int x1, int y1, int x2, int y2)
+    void add_ray(int x1, int y1, int x2, int y2, string flag)
     {
         tuple2 start = tuple2(x1, y1);
         tuple2 end = tuple2(x2, y2);
@@ -108,7 +145,7 @@ class GridMap
         for (int i = 0; i < ray.size(); i++){
             int x = std::get<0>(ray[i]);
             int y = std::get<1>(ray[i]);
-            add_to_map(x,y,100, "");
+            add_to_map(x,y,100, flag);
 
             // create high walls
             float x0 = std::get<0>(ray[i])*map_resolution + min_x;
@@ -184,7 +221,7 @@ class GridMap
     }
 
     void inflate_map_local(int x, int y, string flag){
-        int radius = 5;
+        int radius = 4;
         if (flag == "added_wall" || flag == "added_battery") radius = 4;
         int inflate_x = 0;
         int inflate_y = 0;
@@ -209,7 +246,7 @@ class GridMap
                         add_to_map(inflate_x, inflate_y, -2, "inflation"); 
                     } 
                 }  
-                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 2)
+                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 3)
                 {
                     cell_state = map_v[inflate_x + inflate_y*n_width];
 
@@ -246,8 +283,8 @@ void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
                 // if laser scan is not on wall, add to the counter
                 count++;
 
-                // if 10 scans or more has been on free space, add them to the map (then we're confident in that these scans are not just outliers)
-                if (count >= 10)
+                // if 3 scans or more has been on free space, add them to the map (then we're confident in that these scans are not just outliers)
+                if (count >= 2)
                 {
                     for (int j = i; j > i - count; j--)
                     {   
@@ -295,11 +332,61 @@ void batteryCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
 }
 
 
+bool check_visible(int robot_x,int robot_y,int explore_x,int explore_y)
+{
+    int x_inc = 1;
+    if (explore_x <= robot_x) x_inc = -1;
+
+    int y_inc = 1;
+    if (explore_y <= robot_y) y_inc = -1;
+
+    
+    float dx = fabs(explore_x - robot_x);
+    float dy = fabs(explore_y - robot_y);
+    float n = dx + dy;
+
+    int x = robot_x;
+    int y = robot_y;
+    float error = dx - dy;
+    dx = dx*2;
+    dy = dy*2;
+
+        
+    for (int i = 0; i < int(n); i++)
+    {
+        //ROS_INFO("%d %d %d ",x,y,ras_map.map_v[(int)(x) + (int)(y*ras_map.n_width)]);
+        if (ras_map.map_v[(int)(x) + (int)(y*ras_map.n_width)] == 100)
+            {
+                //ROS_INFO("# %d %d",x,y);
+                return false;
+            }
+
+        if (error > 0)
+        {
+            x += x_inc;
+            error -= dy;
+        }
+        else
+        {
+            if (error == 0)
+            {
+                if (ras_map.map_v[(int)(x + x_inc) + (int)(y*ras_map.n_width)] == 100)
+                {
+                    //ROS_INFO("& %d %d",x,y);
+                    return false;
+                }
+            }
+            y += y_inc;
+            error += dx;
+        }
+    }
+    return true;
+}
 int counter = 0;
 void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     counter++;
-    if (counter >= 5)
+    if (counter >= 10)
     {
         //tf::TransformListener listener(ros::Duration(10));
         x = msg->pose.pose.orientation.x;
@@ -316,7 +403,10 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
         double pos_y = msg->pose.pose.position.y;
 
         double range = 0.3; //range camera can see
-   
+
+        int pos_x_int = (int)((pos_x-ras_map.min_x)/ras_map.map_resolution);
+        int pos_y_int = (int)((pos_y-ras_map.min_y)/ras_map.map_resolution);
+        
 
         for(double i = range -0.1 ; i < (range + 0.1) ; i+=0.03)
         {
@@ -325,7 +415,14 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
             {
                 double visited_x = pos_x + cos(j)*i;
                 double visited_y = pos_y + sin(j)*i;
-                ras_map_exploration.add_to_map((int)((visited_x-ras_map.min_x)/ras_map.map_resolution), (int)((visited_y-ras_map.min_y)/ras_map.map_resolution), 50, "explored");
+
+                int visited_x_int = (int)((visited_x-ras_map.min_x)/ras_map.map_resolution);
+                int visited_y_int = (int)((visited_y-ras_map.min_y)/ras_map.map_resolution);
+                if (ras_map.map_v[visited_x_int + (visited_y_int*ras_map.n_width)] == 100)
+                   continue;
+                if (check_visible(pos_x_int,pos_y_int,visited_x_int,visited_y_int))
+                    ras_map_exploration.add_to_map(visited_x_int,visited_y_int,50,"explored");
+                    
             }    
         }
         counter = 0;
@@ -337,7 +434,7 @@ int main(int argc, char **argv)
     // Set up ROS.
     ros::init(argc, argv, "maze_map_node");
     ros::NodeHandle n("~");
-    ros::Rate r(10);
+    ros::Rate r(2);
     
     // from ras_grid_map-------------------------------------
     // initialize publisher
@@ -487,17 +584,29 @@ int main(int argc, char **argv)
         }
 
         // add ray --------------------------------------------------
-        ras_map.add_ray((int)((x1-x_min)/ras_map.map_resolution),(int)((y1-y_min)/ras_map.map_resolution),(int)((x2-x_min)/ras_map.map_resolution),(int)((y2-y_min)/ras_map.map_resolution));
+        ras_map_exploration.add_ray((int)((x1-x_min)/ras_map.map_resolution),(int)((y1-y_min)/ras_map.map_resolution),(int)((x2-x_min)/ras_map.map_resolution),(int)((y2-y_min)/ras_map.map_resolution),"explored");
+        ras_map.add_ray((int)((x1-x_min)/ras_map.map_resolution),(int)((y1-y_min)/ras_map.map_resolution),(int)((x2-x_min)/ras_map.map_resolution),(int)((y2-y_min)/ras_map.map_resolution),"");
     }
-    //ROS_INFO_STREAM("Read "<<wall_id<<" walls from map file.");
 
-    // inflate the map
-    //as_map.inflate_map();
+    // refresh map w.r.t the file from ROUND 1
+    std::ifstream ifile;
+    ifile.open("/home/ras14/catkin_ws/src/round1map.txt");
+    if ((bool)ifile)
+    {
+        ras_map.refresh_map();
+        cout << "FOUND";
+    }
+    else
+    {
+        cout << "NOT FOUND";
+    }
+    
 
     // Main loop.
+    int counter = 0;
     while (n.ok())
     {
-        ROS_INFO_STREAM("!hello!");
+        //ROS_INFO_STREAM("!hello!");
 
         // publish high walls
         vis_pub.publish(ras_map.all_markers);
@@ -506,8 +615,19 @@ int main(int argc, char **argv)
         grid.data = ras_map.map_v;      
         map_pub.publish(grid);
 
+        //ras_map.add_ray(0,0,60,60,"");
+
         grid_exploration.data = ras_map_exploration.map_v;
         map_pub_exploration.publish(grid_exploration);
+
+        // save map to file
+        counter += 1;
+        if (counter >= 20)
+        {
+            ras_map.map_to_file();
+            counter = 0;
+        }
+        
 
         ros::spinOnce();
         r.sleep();

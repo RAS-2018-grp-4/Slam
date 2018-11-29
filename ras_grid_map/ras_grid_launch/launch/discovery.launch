@@ -1,12 +1,39 @@
 <launch>
 
-  <arg name="map_file" default="lab_maze_2018.txt" />
+
+   <node pkg="phidgets" type="motor" name="left_motor"  >
+	 <param name="serial" value="473018"/>
+     <param name="name" value="left_motor"/>
+  </node>
+
+   <node pkg="phidgets" type="motor" name="right_motor"  >
+	 <param name="serial" value="478403"/>
+     <param name="name" value="right_motor"/>
+  </node>
+
+
+     <node pkg="ras_keyboard_control" type="motor_controller.py" name="motor_controller">
+  </node>
+
+  <!-- tf from odom to base link -->
+     <node pkg="ras_robot_tf" type="tf_broadcaster" name="tf_broadcaster">
+  </node>
+  
+  <!-- static tf for sensors to base link-->
+  <node pkg="tf" type="static_transform_publisher" name="base_2_laser" args="0 0 0.2 0 0 0 1 /base_link /laser 100" />
+
+  <node pkg="tf" type="static_transform_publisher" name="base_2_camera" args="0.1 0 0.2 -0.5 -0.5 0.5 0.5 /base_link /camera_link 100" />
+
+
+
+
+  <arg name="map_file" default="lab_maze_2018_2.txt" />
   <arg name="x_offset" default="0.0"/>
   <arg name="y_offset" default="0.0"/>
   <arg name="theta_offset" default="0.0"/>
 
-  <!-- load the world node -->
-  <node pkg="ras_grid_map" type="discovery_node" name="discovery_node"  >
+  <!-- load the world node-->
+  <node pkg="ras_grid_map" type="maze_map_node" name="maze_map_node"  >
 	 <param name="map_file" value="$(find ras_grid_map)/maps/$(arg map_file)"/>
   </node>
 
@@ -19,5 +46,18 @@
 	<arg name="y_offset" value="$(arg y_offset)"/>
 	<arg name="theta_offset" value="$(arg theta_offset)"/>
   </include>
+
+
+  <!-- run MCL node -->
+  <node pkg="MCL_python" type="mcl.py" name="MCL node">
+  </node>
+
+  <!-- run path follower node -->
+  <node pkg="ras_keyboard_control" type="path_follower.py" name="path follower node">
+  </node>
+
+  <!-- run path planner node -->
+  <node pkg="path_planner" type="path_planner.py" name="path planner node">
+  </node>
 
 </launch>
