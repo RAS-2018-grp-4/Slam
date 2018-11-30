@@ -228,9 +228,9 @@ class GridMap
         int cell_state = 0;
 
         // scan a square around the point with side length 2*self.radius
-        for (int i = -radius-3; i < radius+4; i++)
+        for (int i = -radius-4; i < radius+5; i++)
         {
-            for (int j = -radius-3; j < radius+4; j++)
+            for (int j = -radius-4; j < radius+5; j++)
             {
                 inflate_x = x + i;
                 inflate_y = y + j;
@@ -246,7 +246,7 @@ class GridMap
                         add_to_map(inflate_x, inflate_y, -2, "inflation"); 
                     } 
                 }  
-                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 3)
+                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 2)
                 {
                     cell_state = map_v[inflate_x + inflate_y*n_width];
 
@@ -254,6 +254,16 @@ class GridMap
                     if ((cell_state != 100) && (cell_state != -2))
                     {
                         add_to_map(inflate_x, inflate_y, -20, "inflation"); 
+                    }   
+                } 
+                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 3)
+                {
+                    cell_state = map_v[inflate_x + inflate_y*n_width];
+
+                    // make sure that the cell we want to fill in isn't occupied (or already c_space)
+                    if ((cell_state != 100) && (cell_state != -2) && (cell_state != -20))
+                    {
+                        add_to_map(inflate_x, inflate_y, -40, "inflation"); 
                     }   
                 } 
             }                      
@@ -386,7 +396,7 @@ int counter = 0;
 void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 {
     counter++;
-    if (counter >= 10)
+    if (counter >= 2)
     {
         //tf::TransformListener listener(ros::Duration(10));
         x = msg->pose.pose.orientation.x;
@@ -410,7 +420,7 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
 
         for(double i = range -0.1 ; i < (range + 0.1) ; i+=0.03)
         {
-            double beta = atan2(0.75,i);      
+            double beta = atan2(0.25,i);      
             for (double j = yaw - beta  ; j < yaw + beta; j+= 0.07)
             {
                 double visited_x = pos_x + cos(j)*i;
@@ -434,7 +444,7 @@ int main(int argc, char **argv)
     // Set up ROS.
     ros::init(argc, argv, "maze_map_node");
     ros::NodeHandle n("~");
-    ros::Rate r(2);
+    ros::Rate r(10);
     
     // from ras_grid_map-------------------------------------
     // initialize publisher
@@ -612,29 +622,32 @@ int main(int argc, char **argv)
                 ras_map_exploration.add_to_map(i,j,50,"explored");
 
 
-
-
     // Main loop.
     int counter = 0;
+    int counter2 = 0;
     while (n.ok())
     {
         //ROS_INFO_STREAM("!hello!");
 
-        // publish high walls
-        vis_pub.publish(ras_map.all_markers);
+        counter2 += 1;
+        if (counter2 >= 10)
+        {
+            // publish high walls
+            vis_pub.publish(ras_map.all_markers);
 
-        // publish the grid map
-        grid.data = ras_map.map_v;      
-        map_pub.publish(grid);
+            // publish the grid map
+            grid.data = ras_map.map_v;      
+            map_pub.publish(grid);
 
-        //ras_map.add_ray(0,0,60,60,"");
+            //ras_map.add_ray(0,0,60,60,"");
 
-        grid_exploration.data = ras_map_exploration.map_v;
-        map_pub_exploration.publish(grid_exploration);
-
+            grid_exploration.data = ras_map_exploration.map_v;
+            map_pub_exploration.publish(grid_exploration);
+            counter2 = 0;
+        }
         // save map to file
         counter += 1;
-        if (counter >= 20)
+        if (counter >= 100)
         {
             ras_map.map_to_file();
             counter = 0;
