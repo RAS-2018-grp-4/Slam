@@ -36,6 +36,7 @@ import tf
 import matplotlib.pyplot as plt
 from geometry_msgs.msg import  Pose, PoseArray
 from sklearn.preprocessing import normalize
+import time
 
 # for odom calculation
 import std_msgs.msg
@@ -79,9 +80,10 @@ class MCL_py():
         self.encoder_left = 0
         self.v_left = 0             #left wheel velocity 
         self.v_right = 0            #right wheel vel
-        self.sita = math.pi/2
-        self.temp_x = 0.2
-        self.temp_y = 0.2
+
+        self.temp_x = rospy.get_param("/pose/x")
+        self.temp_y = rospy.get_param("/pose/y")
+        self.sita = rospy.get_param("/pose/theta")
 
         # Variables of interest
         self.tspeed = 0
@@ -89,9 +91,9 @@ class MCL_py():
         self.robot_odom = Odometry()
         self.RESET = False
 
-        self.x_reset = 0.2
-        self.y_reset = 0.2
-        self.theta_reset = math.pi/2
+        self.x_reset = rospy.get_param("/pose/x")
+        self.y_reset = rospy.get_param("/pose/y")
+        self.theta_reset = rospy.get_param("/pose/theta")
 
         #self.particle_cloud = PoseArray()
         
@@ -436,6 +438,8 @@ def main():
     # In this particular case, subscriber callbacks have not yet been called, so everything initializes to 0
     #if mcl_obj.received_odom == 1 and mcl_obj.received_scan == 1 and mcl_obj.received_map == 1:  
     
+    time.sleep(2)
+
     e = 0
     while not rospy.is_shutdown():
         e = e + 1
