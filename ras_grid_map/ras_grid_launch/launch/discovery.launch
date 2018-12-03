@@ -11,6 +11,7 @@
      <param name="name" value="right_motor"/>
   </node>
 
+<rosparam command="load" file="/home/ras14/catkin_ws/src/ras_launch/param_server/param_server.yaml" />
 
      <node pkg="ras_keyboard_control" type="motor_controller.py" name="motor_controller">
   </node>
@@ -22,8 +23,11 @@
   <!-- static tf for sensors to base link-->
   <node pkg="tf" type="static_transform_publisher" name="base_2_laser" args="0 0 0.2 0 0 0 1 /base_link /laser 100" />
 
-  <node pkg="tf" type="static_transform_publisher" name="base_2_camera" args="0.1 0 0.2 -0.5 -0.5 0.5 0.5 /base_link /camera_link 100" />
+<!--
+  <node pkg="tf" type="static_transform_publisher" name="base_2_camera" args="0.1 0 0.2 1.5708 0.0 -1.20 /base_link /camera_link 100" />
+  -->
 
+  <node pkg="tf" type="static_transform_publisher" name="base_2_camera" args="0.1 0 0.2 4.71 0.0 4.34  /base_link /camera_link 100" />
 
 
 
@@ -46,6 +50,7 @@
 	<arg name="y_offset" value="$(arg y_offset)"/>
 	<arg name="theta_offset" value="$(arg theta_offset)"/>
   </include>
+<rosparam command="load" file="/home/ras14/catkin_ws/src/ras_launch/param_server/param_server.yaml" />
 
 
   <!-- run MCL node -->
@@ -56,8 +61,33 @@
   <node pkg="ras_keyboard_control" type="path_follower.py" name="path follower node">
   </node>
 
+
   <!-- run path planner node -->
+    <!-- -->
   <node pkg="path_planner" type="path_planner.py" name="path planner node">
   </node>
+    
+
+  <!-- launch realsense launch file -->
+  <include file="$(find realsense_camera)/launch/sr300_nodelet_rgbd.launch"> 
+  </include>
+
+    <include file="$(find rplidar_ros)/launch/rplidar.launch"> 
+  </include>
+
+
+  <node pkg="ras_espeak" type="espeak_node" name="espeak_node"  />
+
+  <!-- launch object detection node -->
+  <node pkg="ras_object_detection_python" type="object+battery_detection_4.py" name="object_detection_python_node"  />
+  <!--<node pkg="object_detection_test" type="object_detection_test" name="object_detection_test" />-->
+ 
+  <!-- launch tf listener from cam link to base link for objects -->
+  <node pkg="ras_object_detection_python" type="object_tf.py" name="object_tf"  />
+  <!--<node pkg="object_detection_test" type="object_tf_classical.py" name="object_tf_classical"  />-->
+ 
+    <!-- launch object saving/tracking node -->
+  <node pkg="object_saving" type="object_saving" name="object_saving" output="screen" />
+ 
 
 </launch>

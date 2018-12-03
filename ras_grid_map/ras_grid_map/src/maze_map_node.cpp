@@ -33,6 +33,7 @@
 #include <ros/console.h>
 using namespace std;
 
+bool BATTERY_FOUND = false;
 typedef std::tuple<int, int> tuple2;
 float x;
 float y;
@@ -61,6 +62,52 @@ class GridMap
         map_v = std::vector<signed char>(n_height*n_width);  
         min_x = m_x;
         min_y = m_y;
+    }
+
+    void mark_unexplorable_space()
+    {
+        // down --> up
+        for (int x = 0; x < n_width; x++)
+        {
+            for (int y = 0; y < n_height; y++)
+            {
+                if (map_v[x + y*n_width] != 100)
+                {
+                    map_v[x + y*n_width] = 50;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        // up --> down
+        for (int x = 0; x < n_width; x++)
+        {
+            for (int y = n_height - 1; y >= 0; y--)
+            {
+                if (map_v[x + y*n_width] != 100)
+                {
+                    map_v[x + y*n_width] = 50;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    void erode_map_counter()
+    {
+        for (int i = 0; i < n_height*n_width; i++)
+        {     
+            if (map_v[i] >= 1)
+            {
+                map_v[i] -= 1;
+            }          
+        }
     }
 
     void map_to_file()
@@ -222,7 +269,7 @@ class GridMap
 
     void inflate_map_local(int x, int y, string flag){
         int radius = 4;
-        if (flag == "added_wall" || flag == "added_battery") radius = 4;
+        if (flag == "added_wall" || flag == "added_battery") radius = 5;
         int inflate_x = 0;
         int inflate_y = 0;
         int cell_state = 0;
@@ -246,7 +293,7 @@ class GridMap
                         add_to_map(inflate_x, inflate_y, -2, "inflation"); 
                     } 
                 }  
-                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 2)
+                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 1)
                 {
                     cell_state = map_v[inflate_x + inflate_y*n_width];
 
@@ -256,7 +303,7 @@ class GridMap
                         add_to_map(inflate_x, inflate_y, -20, "inflation"); 
                     }   
                 } 
-                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 3)
+                else if (sqrt(pow(inflate_x - x, 2) + pow(inflate_y - y, 2)) <= radius + 2)
                 {
                     cell_state = map_v[inflate_x + inflate_y*n_width];
 
@@ -274,6 +321,7 @@ class GridMap
 
 GridMap ras_map;
 GridMap ras_map_exploration;
+GridMap ras_map_counter;
 
 void wallCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
 {
@@ -332,10 +380,19 @@ void batteryCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
 
         if (ras_map.is_in_bounds(x_int, y_int))
         {
-            if (ras_map.map_v[x_int + y_int*ras_map.n_width] == -2 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 0 || ras_map.map_v[x_int + y_int*ras_map.n_width] == -20 || ras_map.map_v[x_int + y_int*ras_map.n_width] == 50)
+            if (ras_map.map_v[x_int + y_int*ras_map.n_width] != -2 && ras_map.map_v[x_int + y_int*ras_map.n_width] != 100)
             {
-                ras_map.add_to_map(x_int, y_int, 100, "added_battery");
-                ras_map_exploration.add_to_map(x_int, y_int, 100, "no_inflation");
+                // increase counter with 1
+                ras_map_counter.map_v[x_int + y_int*ras_map.n_width] = ras_map_counter.map_v[x_int + y_int*ras_map.n_width] + 1;
+                
+                // if counter >= 5, stamp the battery in the original map
+                if (ras_map_counter.map_v[x_int + y_int*ras_map.n_width] >= 3)
+                {
+                    ras_map.add_to_map(x_int, y_int, 100, "added_battery");
+                    ras_map_exploration.add_to_map(x_int, y_int, 100, "no_inflation");
+
+                    BATTERY_FOUND = true;
+                }
             }
         }     
     }   
@@ -412,13 +469,13 @@ void odomCallback(const nav_msgs::Odometry::ConstPtr& msg)
         double pos_x = msg->pose.pose.position.x;
         double pos_y = msg->pose.pose.position.y;
 
-        double range = 0.3; //range camera can see
+        double range = 0.4; //range camera can see
 
         int pos_x_int = (int)((pos_x-ras_map.min_x)/ras_map.map_resolution);
         int pos_y_int = (int)((pos_y-ras_map.min_y)/ras_map.map_resolution);
         
 
-        for(double i = range -0.1 ; i < (range + 0.1) ; i+=0.03)
+        for(double i = range -0.2; i < (range + 0.2) ; i+=0.03)
         {
             double beta = atan2(0.25,i);      
             for (double j = yaw - beta  ; j < yaw + beta; j+= 0.07)
@@ -450,6 +507,8 @@ int main(int argc, char **argv)
     // initialize publisher
     ros::Publisher map_pub = n.advertise<nav_msgs::OccupancyGrid>("map", 1000);
     ros::Publisher map_pub_exploration = n.advertise<nav_msgs::OccupancyGrid>("map_explored", 1000);
+    ros::Publisher map_pub_counter = n.advertise<nav_msgs::OccupancyGrid>("map_counter", 1000);
+    ros::Publisher battery_detected_pub = n.advertise<std_msgs::String>("/battery_detected", 1);
     ros::Subscriber sub_wall = n.subscribe("/wall_position", 1, wallCallback);
     ros::Subscriber sub_battery = n.subscribe("/battery_position_map", 1, batteryCallback);
     ros::Subscriber sub_odom = n.subscribe("/robot_filter", 1, odomCallback);
@@ -517,6 +576,7 @@ int main(int argc, char **argv)
     //x_min = -0.45;
     ras_map.set_map_settings(width,height,0.03,x_min,y_min);
     ras_map_exploration.set_map_settings(width,height,0.03,x_min,y_min);
+    ras_map_counter.set_map_settings(width,height,0.03,x_min,y_min);
     //ras_map.set_map_settings(5,5,0.03,0,0);
 
     // initalize objects for map pose
@@ -541,6 +601,12 @@ int main(int argc, char **argv)
     grid_exploration.info.width = ras_map_exploration.n_width;
     grid_exploration.info.origin = origin_pose;
 
+    nav_msgs::OccupancyGrid grid_counter;                   
+    grid_counter.info.resolution = ras_map_exploration.map_resolution;
+    grid_counter.info.height = ras_map_exploration.n_height;
+    grid_counter.info.width = ras_map_exploration.n_width;
+    grid_counter.info.origin = origin_pose;
+
     // GridMap object
     ROS_INFO("Cells height: %d", ras_map.n_height);
     ROS_INFO("Cells width: %d", ras_map.n_width);
@@ -558,9 +624,9 @@ int main(int argc, char **argv)
     ras_map.wall_marker.scale.y = 0.03;
     ras_map.wall_marker.scale.z = 0.2;
     ras_map.wall_marker.color.a = 1.0;
-    ras_map.wall_marker.color.r = (0.0/255.0);
+    ras_map.wall_marker.color.r = (255.0/255.0);
     ras_map.wall_marker.color.g = (255.0/255.0);
-    ras_map.wall_marker.color.b = (0.0/255.0);
+    ras_map.wall_marker.color.b = (255.0/255.0);
     ras_map.wall_marker.pose.position.z = 0.1;
 
 
@@ -622,15 +688,25 @@ int main(int argc, char **argv)
                 ras_map_exploration.add_to_map(i,j,50,"explored");
 
 
+    // mark all space outside the walls as explored
+    ras_map_exploration.mark_unexplorable_space();
+
     // Main loop.
     int counter = 0;
     int counter2 = 0;
     while (n.ok())
     {
-        //ROS_INFO_STREAM("!hello!");
+        // publuish battery flag
+        if (BATTERY_FOUND)
+        {
+            std_msgs::String msg;
+            msg.data = "BATTERY_DETECTED";
+            battery_detected_pub.publish(msg);
+            BATTERY_FOUND = false;
+        }
 
         counter2 += 1;
-        if (counter2 >= 10)
+        if (counter2 >= 5)
         {
             // publish high walls
             vis_pub.publish(ras_map.all_markers);
@@ -638,6 +714,9 @@ int main(int argc, char **argv)
             // publish the grid map
             grid.data = ras_map.map_v;      
             map_pub.publish(grid);
+
+            grid_counter.data = ras_map_counter.map_v;      
+            map_pub_counter.publish(grid_counter);
 
             //ras_map.add_ray(0,0,60,60,"");
 
@@ -651,6 +730,9 @@ int main(int argc, char **argv)
         {
             ras_map.map_to_file();
             counter = 0;
+
+            // erode map counter
+            ras_map_counter.erode_map_counter();
         }
         
 
