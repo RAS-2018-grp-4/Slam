@@ -26,11 +26,17 @@ class Explore:
 
 
 
-        self.initial_target = [[0.23,1.9],[2.1,2.1],[2.0,0.2],[0.78,0.3],[1.1,1.1]]
+        #self.initial_target = [[0.23,1.9],[2.1,2.1],[2.0,0.2],[0.78,0.3],[1.1,1.1]]
+        self.initial_target = [[rospy.get_param("/t2x"), rospy.get_param("/t2y")],
+                                [rospy.get_param("/t3x"), rospy.get_param("/t3y")],
+                                [rospy.get_param("/t4x"), rospy.get_param("/t4y")],
+                                [rospy.get_param("/t5x"), rospy.get_param("/t5y")],
+                                [rospy.get_param("/t6x"), rospy.get_param("/t6y")]]
+        
         self.next_y = 0.0
         self.next_y = 0.0
         self.seq_initial_target = 0
-        self.number_initial_target = 0
+        self.number_initial_target = 5
         self.flag_path_execution = False                 # True when path following done
         self.flag_path_not_found = False
 
@@ -56,7 +62,7 @@ class Explore:
         self.too_far_area = []
         self.min_dis=0.0
         self.closest_area = []
-        self.closest_one = 0
+        self.selected_one = 0
         self.odom_x = 0.0
         self.odom_y = 0.0
     #####################################################
@@ -259,14 +265,15 @@ class Explore:
                     self.bfs(i,j)
                     if (self.size_area > 10) :
                         if self.too_far_area.count(num_area) == 0:
-                        # if self.max_size < self.size_area:
-                        #     self.max_size = self.size_area
-                        #     self.largest_area = self.temp_list
-                            dis = self.calculate_distance(self.temp_list)
-                            if dis < self.min_dis:
-                                self.closest_one = num_area
-                                self.min_dis= dis
+                            if self.max_size < self.size_area:
+                                self.max_size = self.size_area
                                 self.selected_area = self.temp_list
+                                self.selected_one = num_area
+                            # dis = self.calculate_distance(self.temp_list)
+                            # if dis < self.min_dis:
+                            #     self.selected_one = num_area
+                            #     self.min_dis= dis
+                            #     self.selected_area = self.temp_list
                         # if self.pass_num ==  num_area:
                         #        self.selected_area = self.temp_list
                         #        flag_found = True
@@ -329,13 +336,13 @@ class Explore:
                                                                       self.next_y)
                 else:
                     rospy.loginfo('Cannot find new target')
-                    self.too_far_area.append(self.closest_one)
+                    self.too_far_area.append(self.selected_one)
 
                     self.pass_num = self.pass_num + 1
             elif self.flag_path_not_found :
 
                 rospy.loginfo('Abort Path')
-                self.too_far_area.append(self.closest_one)
+                self.too_far_area.append(self.selected_one)
                 print(self.too_far_area)
                 self.pass_num = self.pass_num + 1
                 # rospy.loginfo('Finding Next Target')
