@@ -679,8 +679,12 @@ int main(int argc, char **argv)
     
 
     // make starting area explored
-    int start_x = 6;
-    int start_y = 6;
+    double start_x_,satrt_y_;
+
+    n.getParam("/pos/x",start_x_)
+    n.getParam("/pos/y",start_y_)
+    int start_x = (int)((start_x_ - x_min)/(ras_map.map_resolution));
+    int start_y = (int)((start_y_ - y_min)/(ras_map.map_resolution));;
     int range = 12;
     for (int i = start_x -range; i < start_x + range ; i++)
         for (int j = start_y -range ; j < start_y + range ;j ++)
