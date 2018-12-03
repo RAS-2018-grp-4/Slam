@@ -193,7 +193,7 @@ class Explore:
             cur_y_map = (cur_y* self.map_resolution - self.origin_y)          
             if depth == 5:
                 continue
-            elif (self.original_map[cur_x+cur_y*self.map_width] == -20 or self.original_map[cur_x+cur_y*self.map_width] == 0) and (((cur_x_map - self.odom_x)**2 + (cur_y_map - self.odom_y)**2) > 0.016):
+            elif (self.original_map[cur_x+cur_y*self.map_width] == -40 or self.original_map[cur_x+cur_y*self.map_width] == -20 or self.original_map[cur_x+cur_y*self.map_width] == 0) and (((cur_x_map - self.odom_x)**2 + (cur_y_map - self.odom_y)**2) > 0.16):
                 return [True, cur_x,cur_y]
             
             temp_x = cur_x + 1 
@@ -293,8 +293,8 @@ class Explore:
             if available:
                 rospy.loginfo("Found New Target")
                 self.flag_found_new_target= True
-                self.next_x =  sample_point[i][0] * self.map_resolution - self.origin_x
-                self.next_y =  sample_point[i][1] * self.map_resolution - self.origin_y
+                self.next_x =  sample_point_x * self.map_resolution - self.origin_x
+                self.next_y =  sample_point_y * self.map_resolution - self.origin_y
                 break
         #print(sample(list(self.largest_area),20))
     #####################################################
