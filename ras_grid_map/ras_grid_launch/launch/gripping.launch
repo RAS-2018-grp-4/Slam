@@ -89,9 +89,9 @@
     <!-- launch object saving/tracking node -->
   <node pkg="object_saving" type="object_saving" name="object_saving" output="screen" />
 
-      <!-- launch object saving/tracking node -->
+      <!-- launch object saving/tracking node 
   <node pkg="ras_object_detection" type="wall_detection.py" name="wall_detection"/>
-
+-->
         <!-- launch object saving/tracking node -->
 
          <!--

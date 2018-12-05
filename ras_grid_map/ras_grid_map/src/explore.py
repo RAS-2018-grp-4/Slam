@@ -36,7 +36,7 @@ class Explore:
         self.next_y = 0.0
         self.next_y = 0.0
         self.seq_initial_target = 0
-        self.number_initial_target = 5
+        self.number_initial_target = 0
         self.flag_path_execution = False                 # True when path following done
         self.flag_path_not_found = False
 
@@ -199,7 +199,8 @@ class Explore:
             cur_y_map = (cur_y* self.map_resolution - self.origin_y)          
             if depth == 5:
                 continue
-            elif (self.original_map[cur_x+cur_y*self.map_width] == -40 or self.original_map[cur_x+cur_y*self.map_width] == -20 or self.original_map[cur_x+cur_y*self.map_width] == 0) and (((cur_x_map - self.odom_x)**2 + (cur_y_map - self.odom_y)**2) > 0.16):
+            elif (self.original_map[cur_x+cur_y*self.map_width] == -40 or self.original_map[cur_x+cur_y*self.map_width] == 0) and (((cur_x_map - self.odom_x)**2 + (cur_y_map - self.odom_y)**2) > 0.16):
+            #elif (self.original_map[cur_x+cur_y*self.map_width] == -40 or self.original_map[cur_x+cur_y*self.map_width] == -20 or self.original_map[cur_x+cur_y*self.map_width] == 0) and (((cur_x_map - self.odom_x)**2 + (cur_y_map - self.odom_y)**2) > 0.16):
                 return [True, cur_x,cur_y]
             
             temp_x = cur_x + 1 

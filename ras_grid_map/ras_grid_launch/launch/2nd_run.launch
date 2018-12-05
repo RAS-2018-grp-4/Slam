@@ -11,7 +11,7 @@
      <param name="name" value="right_motor"/>
   </node>
 
-  <rosparam command="load" file="/home/ras14/catkin_ws/src/ras_launch/param_server/param_server.yaml" />
+<rosparam command="load" file="/home/ras14/catkin_ws/src/ras_launch/param_server/param_server.yaml" />
 
      <node pkg="ras_keyboard_control" type="motor_controller.py" name="motor_controller">
   </node>
@@ -30,8 +30,8 @@
   <node pkg="tf" type="static_transform_publisher" name="base_2_camera" args="0.1 0 0.2 4.71 0.0 4.34  /base_link /camera_link 100" />
 
 
-  <!--<arg name="map_file" default="contest_maze_2018.txt" />-->
-   <arg name="map_file" default="lab_maze_2018_2.txt" />
+
+  <arg name="map_file" default="lab_maze_2018_2.txt" />
   <arg name="x_offset" default="0.0"/>
   <arg name="y_offset" default="0.0"/>
   <arg name="theta_offset" default="0.0"/>
@@ -41,9 +41,9 @@
 	 <param name="map_file" value="$(find ras_grid_map)/maps/$(arg map_file)"/>
   </node>
 
-  <!-- run rviz -->
-  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find ras_maze_launch)/config/discovery.rviz" output="screen"/>
-
+  <!-- run rviz 
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(find ras_maze_launch)/config/discovery.rviz" />
+-->
   <!-- publish the transform from odom to map frames -->
   <include file="$(find ras_maze_launch)/launch/static_tf.launch">
 	<arg name="x_offset" value="$(arg x_offset)"/>
@@ -89,15 +89,13 @@
     <!-- launch object saving/tracking node -->
   <node pkg="object_saving" type="object_saving" name="object_saving" output="screen" />
 
-      <!-- launch object saving/tracking node -->
-  <node pkg="ras_object_detection" type="wall_detection.py" name="wall_detection"/>
+      <!-- launch object saving/tracking node 
+  <node pkg="ras_object_detection" type="wall_detection.py" name="wall_detection"/>-->
 
-        <!-- launch object saving/tracking node -->
+        <!-- launch object saving/tracking node 
+  <node pkg="ras_grid_map" type="explore.py" name="explore"/>-->
 
-         <!--
-  <node pkg="ras_grid_map" type="explore.py" name="explore"/>
-
-  <node pkg="state_machine" type="state_machine_1st_run.py" name="state_machine_1st_run" output="screen"/>
- -->
+  <node pkg="state_machine" type="state_machine_2nd_run.py" name="state_machine_2nd_run"/>
+ 
 
 </launch>

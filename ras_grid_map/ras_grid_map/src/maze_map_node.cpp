@@ -269,7 +269,7 @@ class GridMap
 
     void inflate_map_local(int x, int y, string flag){
         int radius = 4;
-        if (flag == "added_wall" || flag == "added_battery") radius = 5;
+        if (flag == "added_wall" || flag == "added_battery") radius = 4;
         int inflate_x = 0;
         int inflate_y = 0;
         int cell_state = 0;
@@ -390,7 +390,6 @@ void batteryCallback(const geometry_msgs::PoseArray::ConstPtr& msg)
                 {
                     ras_map.add_to_map(x_int, y_int, 100, "added_battery");
                     ras_map_exploration.add_to_map(x_int, y_int, 100, "no_inflation");
-
                     BATTERY_FOUND = true;
                 }
             }
@@ -509,6 +508,7 @@ int main(int argc, char **argv)
     ros::Publisher map_pub_exploration = n.advertise<nav_msgs::OccupancyGrid>("map_explored", 1000);
     ros::Publisher map_pub_counter = n.advertise<nav_msgs::OccupancyGrid>("map_counter", 1000);
     ros::Publisher battery_detected_pub = n.advertise<std_msgs::String>("/battery_detected", 1);
+    ros::Publisher espeak_pub = n.advertise<std_msgs::String>("/espeak/string", 1);
     ros::Subscriber sub_wall = n.subscribe("/wall_position", 1, wallCallback);
     ros::Subscriber sub_battery = n.subscribe("/battery_position_map", 1, batteryCallback);
     ros::Subscriber sub_odom = n.subscribe("/robot_filter", 1, odomCallback);
@@ -679,12 +679,12 @@ int main(int argc, char **argv)
     
 
     // make starting area explored
-    double start_x_,satrt_y_;
+    double start_x_, start_y_;
 
-    n.getParam("/pos/x",start_x_)
-    n.getParam("/pos/y",start_y_)
+    n.getParam("/pose/x",start_x_);
+    n.getParam("/pose/y",start_y_);
     int start_x = (int)((start_x_ - x_min)/(ras_map.map_resolution));
-    int start_y = (int)((start_y_ - y_min)/(ras_map.map_resolution));;
+    int start_y = (int)((start_y_ - y_min)/(ras_map.map_resolution));
     int range = 12;
     for (int i = start_x -range; i < start_x + range ; i++)
         for (int j = start_y -range ; j < start_y + range ;j ++)
@@ -706,6 +706,9 @@ int main(int argc, char **argv)
             std_msgs::String msg;
             msg.data = "BATTERY_DETECTED";
             battery_detected_pub.publish(msg);
+            std_msgs::String str_battery_found;
+            str_battery_found.data = "Found an obstacle";
+            espeak_pub.publish(str_battery_found);
             BATTERY_FOUND = false;
         }
 
